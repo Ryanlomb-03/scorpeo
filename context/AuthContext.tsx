@@ -6,13 +6,13 @@ import { getAuth, onAuthStateChanged, User, GoogleAuthProvider, signInWithPopup 
 import { createClient } from "@supabase/supabase-js";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAyoBS2qSBYCQCzfJcoKig44H-gD2lpjqc",
-  authDomain: "koda-021.firebaseapp.com",
-  projectId: "koda-021",
-  storageBucket: "koda-021.firebasestorage.app",
-  messagingSenderId: "430672411340",
-  appId: "1:430672411340:web:69a7a82ddbe926a71c6069",
-  measurementId: "G-MY056KJXWS"
+  apiKey: "AIzaSyCO3eACBnHtzoXcJPvoxUm_2eOKLWahia0",
+  authDomain: "scorpeoai.firebaseapp.com",
+  projectId: "scorpeoai",
+  storageBucket: "scorpeoai.firebasestorage.app",
+  messagingSenderId: "984363134236",
+  appId: "1:984363134236:web:f493f012e333e285fb1ed9",
+  measurementId: "G-B70RWXSDFH"
 };
 
 const supabaseUrl = "https://igofnasquyrrkrwvtqsq.supabase.co";

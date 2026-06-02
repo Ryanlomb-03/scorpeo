@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Sidebar from "@/components/Sidebar";
 import LibraryPopup from "@/components/LibraryPopup";
 import { useAuth } from "@/context/AuthContext";
 
-export default function LibraryPage() {
+function LibraryContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [showPopup, setShowPopup] = useState(false);
@@ -1164,5 +1164,13 @@ export default function LibraryPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function LibraryPage() {
+  return (
+    <Suspense fallback={<div className="flex h-screen bg-black"></div>}>
+      <LibraryContent />
+    </Suspense>
   );
 }

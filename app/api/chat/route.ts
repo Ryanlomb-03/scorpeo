@@ -1,91 +1,10 @@
 import { NextResponse } from "next/server";
 import supabase from "@/lib/db";
-import zlib from "zlib";
+import * as zlib from "zlib";
 
-// NVIDIA API for main chat window
+// NVIDIA API for chat
 const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY || "";
 const NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1";
-
-// Apifreellm API keys for library/sidebar feature
-const API_KEYS = [
-  process.env.APIFREE_KEY_1 || "",
-  process.env.APIFREE_KEY_2 || "",
-  process.env.APIFREE_KEY_3 || "",
-  process.env.APIFREE_KEY_4 || "",
-  process.env.APIFREE_KEY_5 || "",
-  process.env.APIFREE_KEY_6 || ""
-].filter(key => key.length > 0);
-
-// Robust helper to fetch with automatic retries and instant key rotation for 429 rate limits
-async function fetchWithRetryAndRotation(url: string, body: any, maxRetries = 4): Promise<Response> {
-  let attempt = 0;
-  let keyIndex = 0;
-
-  while (attempt < maxRetries) {
-    attempt++;
-    const apiKey = API_KEYS[keyIndex];
-    console.log(`Chat API trying Key ${keyIndex + 1}/${API_KEYS.length}... (Attempt ${attempt}/${maxRetries})`);
-
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey}`
-        },
-        body: JSON.stringify(body)
-      });
-
-      if (res.ok) {
-        return res;
-      }
-
-      // Handle Rate Limit 429: Rotate to other key instantly
-      if (res.status === 429) {
-        console.warn(`Key ${keyIndex + 1} rate limited (429). Rotating key instantly...`);
-        keyIndex = (keyIndex + 1) % API_KEYS.length;
-        
-        // If we rotated back to the first key, we have exhausted all keys for this attempt
-        if (keyIndex === 0) {
-          const text = await res.clone().text();
-          let delay = 3000;
-          try {
-            const json = JSON.parse(text);
-            if (json.retryAfter) {
-              delay = (json.retryAfter * 1000) + 500;
-            } else if (json.error && typeof json.error === "string" && json.error.includes("wait")) {
-              const match = json.error.match(/wait\s+(\d+)\s+seconds/i);
-              if (match && match[1]) {
-                delay = (parseInt(match[1], 10) * 1000) + 500;
-              }
-            }
-          } catch (e) {}
-          console.warn(`All keys busy. Waiting ${delay}ms before next retry...`);
-          await new Promise(r => setTimeout(r, delay));
-        }
-        continue;
-      }
-
-      // Handle Server/Gateway timeouts or temporary outages
-      if (res.status === 502 || res.status === 503 || res.status === 504) {
-        const delay = attempt * 1500; // Incremental backoff: 1.5s, 3s, 4.5s...
-        console.warn(`Upstream server error (${res.status}). Retrying after ${delay}ms...`);
-        await new Promise(r => setTimeout(r, delay));
-        continue;
-      }
-
-      return res;
-    } catch (err) {
-      console.error(`Fetch exception on attempt ${attempt}:`, err);
-      keyIndex = (keyIndex + 1) % API_KEYS.length;
-      if (attempt >= maxRetries) {
-        throw err;
-      }
-      await new Promise(r => setTimeout(r, 1500));
-    }
-  }
-  throw new Error("Max retries reached without success");
-}
 
 // Generate smart, contextual responses if the AI service is completely unreachable
 function getFallbackResponse(message: string): string {
@@ -118,11 +37,6 @@ export async function POST(req: Request) {
   }
 
   try {
-    // Build context-aware prompt for apifreellm
-    const context = history && history.length > 0 
-      ? history.map((m: any) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n')
-      : "";
-    
     const systemInstructions = `CRITICAL INSTRUCTION: For mathematical equations in the main text, use standard markdown format with $$ delimiters.
 
 For mathematical formulas, ALWAYS use this exact format:
@@ -160,106 +74,108 @@ EXAMPLE TABLE FORMAT:
 
 ALWAYS use LaTeX with $ delimiters for mathematical symbols in tables to ensure proper font rendering.`;
     
-    const fullPrompt = `${systemInstructions}\n\n${context}\nUser: ${message}`;
+    const chatMessages = [
+      { role: "system", content: systemInstructions },
+      ...(history && history.length > 0 ? history.map((m: any) => ({ role: m.role, content: m.content })) : []),
+      { role: "user", content: message }
+    ];
 
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+    // --- NVIDIA API with streaming ---
+    if (NVIDIA_API_KEY) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
 
-      const res = await fetch(`${NVIDIA_BASE_URL}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${NVIDIA_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: "minimaxai/minimax-m2.7",
-          messages: [
-            { role: "system", content: systemInstructions },
-            ...(history && history.length > 0 ? history.map((m: any) => ({ role: m.role, content: m.content })) : []),
-            { role: "user", content: message }
-          ],
-          temperature: 0.7,
-          top_p: 0.9,
-          max_tokens: 16384,
-          stream: true
-        }),
-        signal: controller.signal
-      });
+        const res = await fetch(`${NVIDIA_BASE_URL}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${NVIDIA_API_KEY}`
+          },
+          body: JSON.stringify({
+            model: "minimaxai/minimax-m2.7",
+            messages: chatMessages,
+            temperature: 1,
+            top_p: 0.95,
+            max_tokens: 8192,
+            stream: false
+          }),
+          signal: controller.signal
+        });
 
-      clearTimeout(timeoutId);
+        clearTimeout(timeoutId);
 
-      if (!res.ok) {
-        const errorText = await res.text();
-        console.error("NVIDIA API error:", res.status, errorText);
-        throw new Error(`NVIDIA API returned ${res.status}: ${errorText}`);
-      }
-
-      // Forward the streaming response directly from NVIDIA
-      const encoder = new TextEncoder();
-      const decoder = new TextDecoder();
-      const stream = new ReadableStream({
-        async start(controller) {
-          const reader = res.body?.getReader();
-          if (!reader) {
-            controller.close();
-            return;
-          }
-
-          try {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) {
-                controller.close();
-                break;
+        if (res.ok) {
+          // Forward the streaming response directly from NVIDIA
+          const encoder = new TextEncoder();
+          const decoder = new TextDecoder();
+          const stream = new ReadableStream({
+            async start(streamController) {
+              const reader = res.body?.getReader();
+              if (!reader) {
+                streamController.close();
+                return;
               }
 
-              const chunk = decoder.decode(value, { stream: true });
-              const lines = chunk.split('\n');
-
-              for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                  const data = line.slice(6);
-                  if (data === '[DONE]') {
-                    controller.close();
-                    return;
+              try {
+                let buffer = "";
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) {
+                    streamController.close();
+                    break;
                   }
 
-                  try {
-                    const parsed = JSON.parse(data);
-                    const content = parsed.choices[0]?.delta?.content;
-                    if (content) {
-                      controller.enqueue(encoder.encode(content));
+                  buffer += decoder.decode(value, { stream: true });
+                  const lines = buffer.split('\n');
+                  buffer = lines.pop() || ""; // Keep incomplete line in buffer
+
+                  for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                      const data = line.slice(6).trim();
+                      if (data === '[DONE]') {
+                        streamController.close();
+                        return;
+                      }
+
+                      try {
+                        const parsed = JSON.parse(data);
+                        const content = parsed.choices?.[0]?.delta?.content;
+                        if (content) {
+                          streamController.enqueue(encoder.encode(content));
+                        }
+                      } catch (e) {
+                        // Skip invalid JSON chunks
+                      }
                     }
-                  } catch (e) {
-                    // Skip invalid JSON
                   }
                 }
+              } catch (err) {
+                console.error("NVIDIA stream reading error:", err);
+                streamController.error(err);
               }
-            }
-          } catch (err) {
-            console.error("Stream reading error:", err);
-            controller.error(err);
-          }
-        },
-      });
+            },
+          });
 
-      return new Response(stream, {
-        headers: {
-          "Content-Type": "text/plain; charset=utf-8",
-          "Cache-Control": "no-cache, no-transform",
-          "Connection": "keep-alive",
-        },
-      });
-    } catch (fetchErr) {
-      console.error("Failed to get response from NVIDIA API:", fetchErr);
+          return new Response(stream, {
+            headers: {
+              "Content-Type": "text/plain; charset=utf-8",
+              "Cache-Control": "no-cache, no-transform",
+              "Connection": "keep-alive",
+            },
+          });
+        } else {
+          const errorText = await res.text().catch(() => "unknown error");
+          console.error(`NVIDIA API error: ${res.status} - ${errorText}`);
+        }
+      } catch (nvidiaErr: any) {
+        console.error("NVIDIA API request failed:", nvidiaErr?.message || nvidiaErr);
+      }
     }
 
-    // If the service failed to return a response, use our smart fallback instead of showing an error
-    console.warn("Using smart fallback response.");
+    // --- Fallback: smart static response ---
+    console.warn("NVIDIA API failed. Using static fallback response.");
     const reply = getFallbackResponse(message);
-
-    // Stream the fallback response
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
@@ -308,9 +224,7 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: "Instruction required" }, { status: 400 });
     }
 
-    // Use apifreellm for library/sidebar feature
-    const apiKey = API_KEYS[0];
-    if (!apiKey) {
+    if (!NVIDIA_API_KEY) {
       return NextResponse.json({ error: "API Key missing" }, { status: 500 });
     }
 
@@ -322,25 +236,31 @@ export async function PUT(req: Request) {
 
     Current Document Content: ${content || "(empty document)"}`;
 
-    const res = await fetch("https://apifreellm.com/api/v1/chat", {
+    const res = await fetch(`${NVIDIA_BASE_URL}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`
+        "Authorization": `Bearer ${NVIDIA_API_KEY}`
       },
       body: JSON.stringify({
-        message: prompt
+        model: "minimaxai/minimax-m2.7",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 1,
+        top_p: 0.95,
+        max_tokens: 8192,
+        stream: false
       }),
     });
 
     if (!res.ok) {
       const errorText = await res.text();
-      console.error("Apifreellm call failed:", errorText);
+      console.error("NVIDIA API call failed:", errorText);
       return NextResponse.json({ error: "API_UNREACHABLE" });
     }
     
     const data = await res.json();
-    return NextResponse.json({ improved: data.response });
+    const improved = data.choices?.[0]?.message?.content || "";
+    return NextResponse.json({ improved });
   } catch (err) {
     console.error("Library AI outer error:", err);
     return NextResponse.json({ error: "Server Error" }, { status: 500 });

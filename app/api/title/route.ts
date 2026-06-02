@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
-// NVIDIA API for title generation
-const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY || "";
+// NVIDIA API for title generation (separate key from main chat)
+const NVIDIA_TITLE_KEY = process.env.NVIDIA_TITLE_KEY || "";
 const NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1";
 
 export async function POST(req: Request) {
@@ -22,37 +22,75 @@ CRITICAL RULES:
 4. Return ONLY the clean title itself, with NO surrounding quotes, introductory text, punctuation, or explanations.`;
 
     let title = "";
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout for titles
 
-      const res = await fetch(`${NVIDIA_BASE_URL}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${NVIDIA_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: "minimaxai/minimax-m2.7",
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: `Message: "${message}"` }
-          ],
-          temperature: 0.3,
-          max_tokens: 50,
-          stream: false
-        }),
-        signal: controller.signal
-      });
+    // --- NVIDIA API with streaming ---
+    if (NVIDIA_TITLE_KEY) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 12000); // 12 second timeout for titles
 
-      clearTimeout(timeoutId);
+        const res = await fetch(`${NVIDIA_BASE_URL}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${NVIDIA_TITLE_KEY}`
+          },
+          body: JSON.stringify({
+            model: "z-ai/glm-5.1",
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: `Message: "${message}"` }
+            ],
+            temperature: 1,
+            top_p: 1,
+            max_tokens: 16384,
+            stream: true
+          }),
+          signal: controller.signal
+        });
 
-      if (res.ok) {
-        const data = await res.json();
-        title = data.choices[0]?.message?.content || "";
+        clearTimeout(timeoutId);
+
+        if (res.ok) {
+          // Process streaming response
+          const decoder = new TextDecoder();
+          const reader = res.body?.getReader();
+
+          if (reader) {
+            let buffer = "";
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split('\n');
+              buffer = lines.pop() || "";
+
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  const data = line.slice(6).trim();
+                  if (data === '[DONE]') break;
+
+                  try {
+                    const parsed = JSON.parse(data);
+                    const content = parsed.choices?.[0]?.delta?.content;
+                    if (content) {
+                      title += content;
+                    }
+                  } catch (e) {
+                    // Skip invalid JSON chunks
+                  }
+                }
+              }
+            }
+          }
+        } else {
+          const errorText = await res.text().catch(() => "unknown");
+          console.error(`NVIDIA title API error: ${res.status} - ${errorText}`);
+        }
+      } catch (err) {
+        console.error("NVIDIA title API failed:", err);
       }
-    } catch (err) {
-      console.error("Failed to generate title with NVIDIA API:", err);
     }
 
     // Clean up title formatting

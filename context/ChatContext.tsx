@@ -400,7 +400,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       } catch (aiError) {
         console.error("AI API error:", aiError);
         setMessages(prev => prev.map(m => 
-          m.id === assistantId ? { ...m, content: "Sorry, something went wrong. Please try again." } : m
+          m.id === assistantId ? { ...m, content: "I'm having trouble connecting right now. Please try sending your message again in a moment.", isLoading: false } : m
         ));
       }
       

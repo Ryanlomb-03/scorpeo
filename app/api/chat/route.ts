@@ -3,14 +3,14 @@ import supabase from "@/lib/db";
 import zlib from "zlib";
 
 // NVIDIA API for main chat window
-const NVIDIA_API_KEY = "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";
+const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY || "";
 const NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1";
 
 // Apifreellm API keys for library/sidebar feature
 const API_KEYS = [
-  "apf_kgz7butm8nqavl7g6fgr0vhw",
-  "apf_me1tkqbdb2qn3w5qn3xwq3bt"
-];
+  process.env.APIFREE_KEY_1 || "",
+  process.env.APIFREE_KEY_2 || ""
+].filter(key => key.length > 0);
 
 // Robust helper to fetch with automatic retries and instant key rotation for 429 rate limits
 async function fetchWithRetryAndRotation(url: string, body: any, maxRetries = 4): Promise<Response> {

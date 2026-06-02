@@ -523,7 +523,8 @@ function LibraryContent() {
   };
 
   return (
-    <div className={`flex-1 bg-black overflow-y-auto ${showNoteEditor && currentNoteFile ? '' : 'flex items-center justify-center p-8'}`}>
+    <>
+      <div className={`flex-1 bg-black overflow-y-auto ${showNoteEditor && currentNoteFile ? '' : 'flex items-center justify-center p-8'}`}>
         {showNoteEditor && currentNoteFile ? (
           <div className="w-full h-full flex flex-col relative">
             {/* Header */}
@@ -1130,7 +1131,7 @@ function LibraryContent() {
           </div>
         </div>
       )}
-      
+
       {/* Note Creation Popup */}
       {showNotePopup && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -1161,7 +1162,7 @@ function LibraryContent() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 

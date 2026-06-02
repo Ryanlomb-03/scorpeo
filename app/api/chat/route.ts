@@ -160,6 +160,9 @@ ALWAYS use LaTeX with $ delimiters for mathematical symbols in tables to ensure 
 
     let reply = "";
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 25000); // 25 second timeout
+
       const res = await fetch(`${NVIDIA_BASE_URL}/chat/completions`, {
         method: "POST",
         headers: {
@@ -177,8 +180,11 @@ ALWAYS use LaTeX with $ delimiters for mathematical symbols in tables to ensure 
           top_p: 0.95,
           max_tokens: 8192,
           stream: false
-        })
+        }),
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
 
       if (res.ok) {
         const data = await res.json();
@@ -194,7 +200,7 @@ ALWAYS use LaTeX with $ delimiters for mathematical symbols in tables to ensure 
       reply = getFallbackResponse(message);
     }
 
-    // Stream the response word-by-word with a tiny delay to simulate a real-time high-speed streaming model
+    // Stream the response word-by-word with minimal delay
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
@@ -203,8 +209,8 @@ ALWAYS use LaTeX with $ delimiters for mathematical symbols in tables to ensure 
         for (const word of words) {
           if (word) {
             controller.enqueue(encoder.encode(word));
-            // 12ms delay for an ultra-fast, smooth, and highly responsive streaming typewriter effect
-            await new Promise((resolve) => setTimeout(resolve, 12));
+            // 2ms delay for fast streaming
+            await new Promise((resolve) => setTimeout(resolve, 2));
           }
         }
         controller.close();

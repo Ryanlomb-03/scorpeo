@@ -189,64 +189,68 @@ ALWAYS use LaTeX with $ delimiters for mathematical symbols in tables to ensure 
 
       clearTimeout(timeoutId);
 
-      if (res.ok) {
-        // Forward the streaming response directly from NVIDIA
-        const encoder = new TextEncoder();
-        const decoder = new TextDecoder();
-        const stream = new ReadableStream({
-          async start(controller) {
-            const reader = res.body?.getReader();
-            if (!reader) {
-              controller.close();
-              return;
-            }
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error("NVIDIA API error:", res.status, errorText);
+        throw new Error(`NVIDIA API returned ${res.status}: ${errorText}`);
+      }
 
-            try {
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) {
-                  controller.close();
-                  break;
-                }
+      // Forward the streaming response directly from NVIDIA
+      const encoder = new TextEncoder();
+      const decoder = new TextDecoder();
+      const stream = new ReadableStream({
+        async start(controller) {
+          const reader = res.body?.getReader();
+          if (!reader) {
+            controller.close();
+            return;
+          }
 
-                const chunk = decoder.decode(value, { stream: true });
-                const lines = chunk.split('\n');
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) {
+                controller.close();
+                break;
+              }
 
-                for (const line of lines) {
-                  if (line.startsWith('data: ')) {
-                    const data = line.slice(6);
-                    if (data === '[DONE]') {
-                      controller.close();
-                      return;
+              const chunk = decoder.decode(value, { stream: true });
+              const lines = chunk.split('\n');
+
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  const data = line.slice(6);
+                  if (data === '[DONE]') {
+                    controller.close();
+                    return;
+                  }
+
+                  try {
+                    const parsed = JSON.parse(data);
+                    const content = parsed.choices[0]?.delta?.content;
+                    if (content) {
+                      controller.enqueue(encoder.encode(content));
                     }
-
-                    try {
-                      const parsed = JSON.parse(data);
-                      const content = parsed.choices[0]?.delta?.content;
-                      if (content) {
-                        controller.enqueue(encoder.encode(content));
-                      }
-                    } catch (e) {
-                      // Skip invalid JSON
-                    }
+                  } catch (e) {
+                    // Skip invalid JSON
                   }
                 }
               }
-            } catch (err) {
-              console.error("Stream reading error:", err);
-              controller.error(err);
             }
-          },
-        });
+          } catch (err) {
+            console.error("Stream reading error:", err);
+            controller.error(err);
+          }
+        },
+      });
 
-        return new Response(stream, {
-          headers: {
-            "Content-Type": "text/plain; charset=utf-8",
-            "Cache-Control": "no-cache, no-transform",
-            "Connection": "keep-alive",
-          },
-        });
-      }
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+          "Connection": "keep-alive",
+        },
+      });
     } catch (fetchErr) {
       console.error("Failed to get response from NVIDIA API:", fetchErr);
     }

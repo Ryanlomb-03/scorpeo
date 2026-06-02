@@ -10,14 +10,55 @@ const API_KEYS = [
   process.env.APIFREE_KEY_6 || ""
 ].filter(key => key.length > 0);
 
+// Helper to test if an API key is responsive with a quick "hi" check
+async function testKeyResponsiveness(apiKey: string): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout for health check
+
+    const res = await fetch("https://apifreellm.com/api/v1/chat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        message: "hi",
+        model: "apifreellm"
+      }),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      const data = await res.json();
+      return data.response && data.response.length > 0;
+    }
+    return false;
+  } catch (err) {
+    console.error("Health check failed:", err);
+    return false;
+  }
+}
+
 // Helper to query apifreellm with automatic key rotation on 429
 async function fetchWithKeyRotation(prompt: string): Promise<Response> {
   let lastErrorText = "";
-  
+
   for (let i = 0; i < API_KEYS.length; i++) {
     const apiKey = API_KEYS[i];
     try {
-      console.log(`Title generation trying Key ${i + 1}/${API_KEYS.length}...`);
+      console.log(`Title generation testing Key ${i + 1}/${API_KEYS.length} responsiveness...`);
+      
+      // First test if the key is responsive with a quick "hi"
+      const isResponsive = await testKeyResponsiveness(apiKey);
+      if (!isResponsive) {
+        console.warn(`Key ${i + 1} failed health check. Rotating to next key...`);
+        continue;
+      }
+
+      console.log(`Key ${i + 1} is responsive. Sending title request...`);
       const res = await fetch("https://apifreellm.com/api/v1/chat", {
         method: "POST",
         headers: {
@@ -38,14 +79,14 @@ async function fetchWithKeyRotation(prompt: string): Promise<Response> {
       if (res.ok) {
         return res;
       }
-      
+
       lastErrorText = await res.text();
       console.warn(`Key ${i + 1} returned status ${res.status}: ${lastErrorText}`);
     } catch (err) {
       console.error(`Key ${i + 1} fetch exception:`, err);
     }
   }
-  
+
   throw new Error(`All API keys exhausted or rate-limited. Last error: ${lastErrorText}`);
 }
 

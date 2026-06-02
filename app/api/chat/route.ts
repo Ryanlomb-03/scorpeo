@@ -95,7 +95,7 @@ ALWAYS use LaTeX with $ delimiters for mathematical symbols in tables to ensure 
             temperature: 1,
             top_p: 0.95,
             max_tokens: 8192,
-            stream: false
+            stream: true
           }),
         });
 

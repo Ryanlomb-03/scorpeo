@@ -1,0 +1,434 @@
+import { useState, useEffect, useRef } from "react";
+import Image from "next/image";
+import ReactMarkdown from 'react-markdown';
+import remarkMath from 'remark-math';
+import remarkGfm from 'remark-gfm';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
+
+const LIMIT = 150;
+
+// Equation symbol definitions for tooltips
+const EQUATION_SYMBOLS: Record<string, string> = {
+  "R_{\\mu\\nu}": "Ricci curvature tensor - Measures how volumes change due to curvature",
+  "R": "Ricci scalar - The trace/contraction of the Ricci tensor",
+  "g_{\\mu\\nu}": "Metric tensor - Defines distances and geometry of spacetime",
+  "G": "Gravitational constant - Newton's constant (~6.674×10⁻¹¹ m³/kg/s²)",
+  "c": "Speed of light - (~3×10⁸ m/s)",
+  "T_{\\mu\\nu}": "Stress-energy tensor - Contains all matter and energy content",
+  "\\Lambda": "Cosmological constant - Represents vacuum energy",
+  "\\pi": "Pi - Mathematical constant (~3.14159)",
+  "\\mu": "Mu - Index notation (spacetime indices)",
+  "\\nu": "Nu - Index notation (spacetime indices)",
+};
+
+export default function MessageBubble({ role, content, onEdit, isLoading, loadingPhase }: { role: string; content: string; onEdit?: (newContent: string) => void; isLoading?: boolean; loadingPhase?: number }) {
+  const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editText, setEditText] = useState(content);
+  const [showTOC, setShowTOC] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const headingIndexRef = useRef(0);
+
+  useEffect(() => {
+    setEditText(content);
+    headingIndexRef.current = 0; // Reset heading index when content changes
+  }, [content]);
+
+  const isUser = role === "user";
+
+  useEffect(() => {
+    if (!isUser && typeof window !== 'undefined' && (window as any).hljs) {
+      document.querySelectorAll('pre code').forEach((block) => {
+        (window as any).hljs.highlightElement(block);
+      });
+    }
+  }, [content, isUser]);
+
+  // Generate table of contents from markdown content
+  const tocData = (() => {
+    const headings: Array<{ id: string; text: string; level: string }> = [];
+    const lines = content.split('\n');
+
+    lines.forEach((line) => {
+      const h1Match = line.match(/^#\s+(.+)$/);
+      const h2Match = line.match(/^##\s+(.+)$/);
+      const h3Match = line.match(/^###\s+(.+)$/);
+
+      if (h1Match) {
+        const text = h1Match[1].trim();
+        const id = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        headings.push({ id: `heading-${id}`, text, level: 'h1' });
+      } else if (h2Match) {
+        const text = h2Match[1].trim();
+        const id = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        headings.push({ id: `heading-${id}`, text, level: 'h2' });
+      } else if (h3Match) {
+        const text = h3Match[1].trim();
+        const id = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        headings.push({ id: `heading-${id}`, text, level: 'h3' });
+      }
+    });
+
+    return headings;
+  })();
+
+  // Check if content is long enough for TOC
+  const hasLongContent = content.length > 500 && (content.includes('##') || content.includes('###'));
+
+  useEffect(() => {
+    if (hasLongContent) {
+      setShowTOC(true);
+    }
+  }, [content, hasLongContent]);
+
+
+  const scrollToHeading = (id: string) => {
+    const element = document.getElementById(id);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  const isLong = content.length > LIMIT;
+  const isShort = content.length <= 30 && !content.includes('\n');
+
+  const getTruncatedText = () => {
+    if (!isLong || expanded) return content;
+    let truncated = content.slice(0, LIMIT);
+    const lastSpace = truncated.lastIndexOf(' ');
+    if (lastSpace > 0) truncated = truncated.slice(0, lastSpace);
+    return truncated + " ...";
+  };
+
+  const renderContent = () => {
+    return (
+      <ReactMarkdown
+        remarkPlugins={[remarkMath, remarkGfm]}
+        rehypePlugins={[rehypeKatex]}
+        components={{
+          code({ node, inline, className, children, ...props }: any) {
+            const match = /language-(\w+)/.exec(className || '');
+            const language = match ? match[1] : 'plaintext';
+            const codeContent = String(children).replace(/\n$/, '');
+
+            if (!inline) {
+              return (
+                <div className="my-4 rounded-lg overflow-hidden border border-[#30363d]">
+                  <div className="flex items-center justify-between bg-[#161b22] px-4 py-2.5 border-b border-[#30363d]">
+                    <div className="flex items-center gap-2">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#8b949e]">
+                        <polyline points="16 18 22 12 16 6"/>
+                        <polyline points="8 6 2 12 8 18"/>
+                      </svg>
+                      <span className="text-[#8b949e] text-xs font-medium capitalize">{language}</span>
+                    </div>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(codeContent)}
+                      className="flex items-center gap-1.5 px-2 py-1 rounded hover:bg-[#30363d] text-[#8b949e] hover:text-[#e6edf3] transition-colors text-xs"
+                      title="Copy code"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
+                        <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+                      </svg>
+                      Copy code
+                    </button>
+                  </div>
+                  <pre className="code-block p-4 overflow-x-auto m-0" style={{ fontFamily: "'JetBrains Mono', 'SF Mono', monospace", background: '#0d1117' }}>
+                    <code className={className} {...props}>{children}</code>
+                  </pre>
+                </div>
+              );
+            }
+            return (
+              <code className="bg-neutral-800 px-1.5 py-0.5 rounded text-sm" {...props}>
+                {children}
+              </code>
+            );
+          },
+          p({ children }) {
+            return <p className="mb-4 last:mb-0 leading-relaxed">{children}</p>;
+          },
+          h1({ children }) {
+            const text = String(children).trim();
+            const id = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+            return <h1 id={`heading-${id}`} className="text-2xl font-bold mb-6 mt-8 scroll-mt-4">{children}</h1>;
+          },
+          h2({ children }) {
+            const text = String(children).trim();
+            const id = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+            return <h2 id={`heading-${id}`} className="text-xl font-bold mb-4 mt-8 scroll-mt-4">{children}</h2>;
+          },
+          h3({ children }) {
+            const text = String(children).trim();
+            const id = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+            return <h3 id={`heading-${id}`} className="text-lg font-bold mb-3 mt-6 scroll-mt-4">{children}</h3>;
+          },
+          ul({ children }) {
+            return <ul className="list-disc list-inside mb-4 space-y-2">{children}</ul>;
+          },
+          ol({ children }) {
+            return <ol className="list-decimal list-inside mb-4 space-y-2">{children}</ol>;
+          },
+          li({ children }) {
+            return <li className="ml-2">{children}</li>;
+          },
+          strong({ children }) {
+            return <strong className="font-bold">{children}</strong>;
+          },
+          em({ children }) {
+            return <em className="italic">{children}</em>;
+          },
+          a({ children, href }) {
+            return <a href={href} className="text-blue-400 hover:text-blue-300 underline">{children}</a>;
+          },
+          blockquote({ children }) {
+            return <blockquote className="border-l-4 border-neutral-600 pl-4 italic my-4">{children}</blockquote>;
+          },
+          table({ children }) {
+            return (
+              <div className="my-6 overflow-x-auto">
+                <table className="w-full border-collapse">
+                  {children}
+                </table>
+              </div>
+            );
+          },
+          thead({ children }) {
+            return <thead className="border-b border-neutral-700">{children}</thead>;
+          },
+          tbody({ children }) {
+            return <tbody>{children}</tbody>;
+          },
+          tr({ children }) {
+            return <tr className="border-b border-neutral-800 last:border-0">{children}</tr>;
+          },
+          th({ children }) {
+            return <th className="px-4 py-3 text-left font-semibold text-sm">{children}</th>;
+          },
+          td({ children }) {
+            return <td className="px-4 py-3 text-sm">{children}</td>;
+          },
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    );
+  };
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleEditSubmit = () => {
+    if (onEdit && editText.trim() && editText !== content) {
+      onEdit(editText);
+    }
+    setIsEditing(false);
+  };
+
+  if (isEditing) {
+    const isEditShort = content.length <= 30 && !content.includes('\n');
+    
+    return (
+      <div className={`flex ${isUser ? "justify-end" : "justify-start"} mb-3`}>
+        <div className={`w-full max-w-3xl bg-neutral-800 border border-neutral-700 rounded-3xl p-4`}>
+          <textarea
+            className="w-full bg-transparent outline-none text-white text-base resize-none"
+            value={editText}
+            onChange={(e) => setEditText(e.target.value)}
+            rows={isEditShort ? 1 : 5}
+            autoFocus
+            onInput={(e) => {
+              const target = e.target as HTMLTextAreaElement;
+              target.style.height = 'auto';
+              target.style.height = Math.min(target.scrollHeight, 240) + 'px';
+            }}
+          />
+          <div className="flex justify-end gap-2 mt-3">
+            <button 
+              onClick={() => setIsEditing(false)}
+              className="text-gray-400 text-sm hover:text-white px-4 py-2"
+            >
+              Cancel
+            </button>
+            <button 
+              onClick={handleEditSubmit}
+              disabled={!editText.trim() || editText === content}
+              className={`text-sm px-5 py-2 rounded-full font-medium transition-colors ${
+                editText.trim() && editText !== content
+                  ? 'bg-white text-black hover:bg-gray-200'
+                  : 'bg-neutral-500 text-neutral-300 cursor-not-allowed'
+              }`}
+            >
+              Update
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isUser) {
+    return (
+      <div className="flex justify-end mb-3 group">
+        <div className="flex items-center gap-1 mr-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button 
+            onClick={handleCopy}
+            className="p-1.5 rounded-full hover:bg-neutral-700 text-gray-400 hover:text-white transition-colors"
+            title={copied ? "Copied!" : "Copy"}
+          >
+            {copied ? (
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 6 9 17l-5-5"/>
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
+                <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+              </svg>
+            )}
+          </button>
+          <button 
+            onClick={() => setIsEditing(true)}
+            className="p-1.5 rounded-full hover:bg-neutral-700 text-gray-400 hover:text-white transition-colors"
+            title="Edit"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+            </svg>
+          </button>
+        </div>
+        <div className={`
+          max-w-[70%] outline-none
+          bg-[#2f2f2f] text-white ${isShort ? 'rounded-full px-5 py-3 text-base' : 'rounded-2xl text-sm px-4 py-3'}
+          leading-relaxed
+          relative
+        `}>
+          <div style={{ whiteSpace: 'pre-wrap' }}>
+            {getTruncatedText()}
+          </div>
+          {isLong && !expanded && (
+            <button 
+              onClick={() => setExpanded(!expanded)}
+              className="absolute top-2 right-2 cursor-pointer hover:opacity-70 transition-opacity z-10"
+            >
+              <Image src="/expand.svg" alt="Expand" width={18} height={18} style={{ filter: 'brightness(0) invert(1)' }} />
+            </button>
+          )}
+          {isLong && expanded && (
+            <button 
+              onClick={() => setExpanded(!expanded)}
+              className="absolute top-2 right-2 cursor-pointer hover:opacity-70 transition-opacity"
+            >
+              <Image src="/expand.svg" alt="Expand" width={18} height={18} style={{ filter: 'brightness(0) invert(1)', transform: 'rotate(180deg)', transition: 'transform 0.2s' }} />
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Loading state for AI - simple pulsing white dot
+  if (isLoading) {
+    return (
+      <div className="flex gap-3 mb-6 items-start">
+        <div className="flex items-center pt-2">
+          <div className="pulse-dot" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex gap-3 mb-4 group">
+      <div className="flex-1 max-w-2xl -mt-0.5">
+        {/* Table of Contents */}
+        {showTOC && !isUser && (
+          <div className="mb-6 p-4 bg-neutral-800/50 rounded-xl border border-neutral-700/50">
+            <h4 className="text-sm font-semibold text-gray-300 mb-3">Contents</h4>
+            <div className="space-y-2">
+              {tocData.map((item: { id: string; text: string; level: string }) => (
+                <button
+                  key={item.id}
+                  onClick={() => scrollToHeading(item.id)}
+                  className={`block text-left text-sm hover:text-white transition-colors ${
+                    item.level === 'h1' ? 'font-semibold text-gray-200' :
+                    item.level === 'h2' ? 'text-gray-300 ml-2' :
+                    'text-gray-400 ml-4'
+                  }`}
+                >
+                  {item.text}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div ref={contentRef} className="text-gray-200 text-[15px] leading-[1.7] relative">
+          {isUser ? (
+            <div style={{ whiteSpace: 'pre-wrap' }}>
+              {getTruncatedText()}
+            </div>
+          ) : (
+            <div style={{ whiteSpace: 'pre-wrap' }}>
+              {renderContent()}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1 mt-1 ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={handleCopy}
+            className="p-1.5 rounded-full hover:bg-neutral-700 text-gray-400 hover:text-white transition-colors"
+            title={copied ? "Copied!" : "Copy"}
+          >
+            {copied ? (
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 6 9 17l-5-5"/>
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
+                <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+              </svg>
+            )}
+          </button>
+          <button
+            className="p-1.5 rounded-full hover:bg-neutral-700 text-gray-400 hover:text-white transition-colors"
+            title="Like"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M7 10v12"/>
+              <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z"/>
+            </svg>
+          </button>
+          <button
+            className="p-1.5 rounded-full hover:bg-neutral-700 text-gray-400 hover:text-white transition-colors"
+            title="Dislike"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17 14V2"/>
+              <path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22h0a3.13 3.13 0 0 1-3-3.88Z"/>
+            </svg>
+          </button>
+          <button
+            className="p-1.5 rounded-full hover:bg-neutral-700 text-gray-400 hover:text-white transition-colors"
+            title="Retry"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+              <path d="M3 3v5h5"/>
+              <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+              <path d="M16 21h5v-5"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

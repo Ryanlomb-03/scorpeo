@@ -1,0 +1,294 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: var(--font-inter), system-ui, sans-serif;
+  }
+}
+
+@font-face {
+  font-family: 'BJCree';
+  src: url('/BJCree-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+::selection {
+  background: #4a6e8a;
+  color: #ffffff;
+}
+
+::-moz-selection {
+  background: #4a6e8a;
+  color: #ffffff;
+}
+
+html,
+body {
+  max-width: 100vw;
+}
+
+body {
+  background: #171717;
+  color: white;
+  font-family: var(--font-inter), system-ui, sans-serif;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #555;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #666;
+}
+
+.ai-ring {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-top-color: white;
+  animation: ai-ring-spin 0.6s linear infinite;
+}
+
+@keyframes ai-ring-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Pulsing white dot loader */
+.pulse-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ffffff;
+  animation: pulse-dot-anim 1.2s infinite ease-in-out;
+  margin-left: 2px;
+  display: inline-block;
+}
+
+@keyframes pulse-dot-anim {
+  0%, 100% {
+    transform: scale(0.65);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+}
+
+.typing { 
+  display: flex; 
+  gap: 6px; 
+  align-items: center; 
+} 
+
+.typing span { 
+  width: 6px; 
+  height: 6px; 
+  border-radius: 50%; 
+  background: currentColor; 
+  animation: bounce 1.4s infinite; 
+} 
+
+.typing span:nth-child(2) { 
+  animation-delay: 0.2s; 
+} 
+
+.typing span:nth-child(3) { 
+  animation-delay: 0.4s; 
+} 
+
+@keyframes bounce { 
+  0%, 80%, 100% { 
+    transform: scale(0.6); 
+    opacity: 0.5; 
+  } 
+  40% { 
+    transform: scale(1); 
+    opacity: 1; 
+  } 
+}
+
+/* ChatGPT-style code block */
+.code-block {
+  background: #0d1117 !important;
+}
+
+.code-block code {
+  color: #e6edf3;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* Syntax highlighting - ChatGPT colors */
+.code-block .hljs-keyword,
+.code-block .hljs-selector-tag,
+.code-block .hljs-literal,
+.code-block .hljs-section,
+.code-block .hljs-link {
+  color: #ff7b72;
+}
+
+.code-block .hljs-function .hljs-title,
+.code-block .hljs-attr,
+.code-block .hljs-subst {
+  color: #d2a8ff;
+}
+
+.code-block .hljs-string,
+.code-block .hljs-title,
+.code-block .hljs-name,
+.code-block .hljs-type,
+.code-block .hljs-attribute,
+.code-block .hljs-symbol,
+.code-block .hljs-bullet,
+.code-block .hljs-addition,
+.code-block .hljs-variable,
+.code-block .hljs-template-tag,
+.code-block .hljs-template-variable {
+  color: #a5d6ff;
+}
+
+.code-block .hljs-comment,
+.code-block .hljs-quote,
+.code-block .hljs-deletion,
+.code-block .hljs-meta {
+  color: #8b949e;
+  font-style: italic;
+}
+
+.code-block .hljs-number,
+.code-block .hljs-regexp,
+.code-block .hljs-literal,
+.code-block .hljs-built_in,
+.code-block .hljs-builtin-name {
+  color: #79c0ff;
+}
+
+.code-block .hljs-params {
+  color: #e6edf3;
+}
+
+.code-block .hljs-operator,
+.code-block .hljs-punctuation {
+  color: #ff7b72;
+}
+
+.code-block .hljs-property,
+.code-block .hljs-tag {
+  color: #7ee787;
+}
+
+/* Classic 12-spoke Loading Spinner */
+.spinner-loader {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  position: relative;
+}
+
+.spinner-loader div {
+  transform-origin: 12px 12px;
+  animation: spinner-loader-anim 1.2s linear infinite;
+}
+
+.spinner-loader div:after {
+  content: " ";
+  display: block;
+  position: absolute;
+  top: 3px;
+  left: 11px;
+  width: 2px;
+  height: 6px;
+  border-radius: 20%;
+  background: #ffffff;
+}
+
+.spinner-loader div:nth-child(1) { transform: rotate(0deg); animation-delay: -1.1s; }
+.spinner-loader div:nth-child(2) { transform: rotate(30deg); animation-delay: -1s; }
+.spinner-loader div:nth-child(3) { transform: rotate(60deg); animation-delay: -0.9s; }
+.spinner-loader div:nth-child(4) { transform: rotate(90deg); animation-delay: -0.8s; }
+.spinner-loader div:nth-child(5) { transform: rotate(120deg); animation-delay: -0.7s; }
+.spinner-loader div:nth-child(6) { transform: rotate(150deg); animation-delay: -0.6s; }
+.spinner-loader div:nth-child(7) { transform: rotate(180deg); animation-delay: -0.5s; }
+.spinner-loader div:nth-child(8) { transform: rotate(210deg); animation-delay: -0.4s; }
+.spinner-loader div:nth-child(9) { transform: rotate(240deg); animation-delay: -0.3s; }
+.spinner-loader div:nth-child(10) { transform: rotate(270deg); animation-delay: -0.2s; }
+.spinner-loader div:nth-child(11) { transform: rotate(300deg); animation-delay: -0.1s; }
+.spinner-loader div:nth-child(12) { transform: rotate(330deg); animation-delay: 0s; }
+
+@keyframes spinner-loader-anim {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* Popup enter animation */
+.popup-enter { animation: popup-enter 0.3s ease-out; }
+
+@keyframes popup-enter {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* KaTeX font fixes for tables and inline math */
+.katex {
+  font-family: 'KaTeX_Main', 'Times New Roman', Times, serif !important;
+}
+
+.katex .font {
+  font-family: 'KaTeX_Main', 'Times New Roman', Times, serif !important;
+}
+
+table .katex,
+td .katex,
+th .katex,
+p .katex,
+li .katex {
+  font-family: 'KaTeX_Main', 'Times New Roman', Times, serif !important;
+}
+
+/* Ensure mathematical symbols render correctly in all contexts */
+.katex .mathit {
+  font-family: 'KaTeX_Main', 'Times New Roman', Times, serif !important;
+}
+
+.katex .mathnormal {
+  font-family: 'KaTeX_Main', 'Times New Roman', Times, serif !important;
+}
+
+.katex .mathrm {
+  font-family: 'KaTeX_Main', 'Times New Roman', Times, serif !important;
+}
+
+.katex .mathbf {
+  font-family: 'KaTeX_Main', 'Times New Roman', Times, serif !important;
+}
+
+/* Smooth scrolling for all elements */
+html {
+  scroll-behavior: smooth;
+}
+
+* {
+  scroll-behavior: smooth;
+}

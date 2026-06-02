@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 
-// Rotate through both free API keys for redundancy and increased rate limits
+// Rotate through free API keys for redundancy and increased rate limits
 const API_KEYS = [
-  "apf_kgz7butm8nqavl7g6fgr0vhw",
-  "apf_me1tkqbdb2qn3w5qn3xwq3bt"
-];
+  process.env.APIFREE_KEY_1 || "",
+  process.env.APIFREE_KEY_2 || "",
+  process.env.APIFREE_KEY_3 || "",
+  process.env.APIFREE_KEY_4 || "",
+  process.env.APIFREE_KEY_5 || "",
+  process.env.APIFREE_KEY_6 || ""
+].filter(key => key.length > 0);
 
 // Helper to query apifreellm with automatic key rotation on 429
 async function fetchWithKeyRotation(prompt: string): Promise<Response> {

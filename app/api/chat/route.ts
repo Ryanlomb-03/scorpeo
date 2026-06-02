@@ -9,7 +9,11 @@ const NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1";
 // Apifreellm API keys for library/sidebar feature
 const API_KEYS = [
   process.env.APIFREE_KEY_1 || "",
-  process.env.APIFREE_KEY_2 || ""
+  process.env.APIFREE_KEY_2 || "",
+  process.env.APIFREE_KEY_3 || "",
+  process.env.APIFREE_KEY_4 || "",
+  process.env.APIFREE_KEY_5 || "",
+  process.env.APIFREE_KEY_6 || ""
 ].filter(key => key.length > 0);
 
 // Robust helper to fetch with automatic retries and instant key rotation for 429 rate limits

@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
-import Sidebar from "@/components/Sidebar";
 import LibraryPopup from "@/components/LibraryPopup";
 import { useAuth } from "@/context/AuthContext";
 
@@ -524,9 +523,7 @@ function LibraryContent() {
   };
 
   return (
-    <div className="flex h-screen">
-      <Sidebar onLoginClick={() => setShowLogin(true)} />
-      <div className={`flex-1 bg-black overflow-y-auto ${showNoteEditor && currentNoteFile ? '' : 'flex items-center justify-center p-8'}`}>
+    <div className={`flex-1 bg-black overflow-y-auto ${showNoteEditor && currentNoteFile ? '' : 'flex items-center justify-center p-8'}`}>
         {showNoteEditor && currentNoteFile ? (
           <div className="w-full h-full flex flex-col relative">
             {/* Header */}

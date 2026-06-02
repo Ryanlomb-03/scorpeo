@@ -83,9 +83,6 @@ ALWAYS use LaTeX with $ delimiters for mathematical symbols in tables to ensure 
     // --- NVIDIA API with streaming ---
     if (NVIDIA_API_KEY) {
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
-
         const res = await fetch(`${NVIDIA_BASE_URL}/chat/completions`, {
           method: "POST",
           headers: {
@@ -100,10 +97,7 @@ ALWAYS use LaTeX with $ delimiters for mathematical symbols in tables to ensure 
             max_tokens: 8192,
             stream: false
           }),
-          signal: controller.signal
         });
-
-        clearTimeout(timeoutId);
 
         if (res.ok) {
           // Forward the streaming response directly from NVIDIA

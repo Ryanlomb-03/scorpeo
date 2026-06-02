@@ -26,9 +26,6 @@ CRITICAL RULES:
     // --- NVIDIA API with streaming ---
     if (NVIDIA_TITLE_KEY) {
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 12000); // 12 second timeout for titles
-
         const res = await fetch(`${NVIDIA_BASE_URL}/chat/completions`, {
           method: "POST",
           headers: {
@@ -46,10 +43,7 @@ CRITICAL RULES:
             max_tokens: 16384,
             stream: true
           }),
-          signal: controller.signal
         });
-
-        clearTimeout(timeoutId);
 
         if (res.ok) {
           // Process streaming response

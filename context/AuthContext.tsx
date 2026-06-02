@@ -6,13 +6,13 @@ import { getAuth, onAuthStateChanged, User, GoogleAuthProvider, signInWithPopup 
 import { createClient } from "@supabase/supabase-js";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCO3eACBnHtzoXcJPvoxUm_2eOKLWahia0",
-  authDomain: "scorpeoai.firebaseapp.com",
-  projectId: "scorpeoai",
-  storageBucket: "scorpeoai.firebasestorage.app",
-  messagingSenderId: "984363134236",
-  appId: "1:984363134236:web:f493f012e333e285fb1ed9",
-  measurementId: "G-B70RWXSDFH"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "",
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "",
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "",
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "",
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "",
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "",
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || ""
 };
 
 const supabaseUrl = "https://igofnasquyrrkrwvtqsq.supabase.co";

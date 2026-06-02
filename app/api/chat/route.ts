@@ -165,7 +165,7 @@ ALWAYS use LaTeX with $ delimiters for mathematical symbols in tables to ensure 
     let reply = "";
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
 
       const res = await fetch(`${NVIDIA_BASE_URL}/chat/completions`, {
         method: "POST",
@@ -182,7 +182,7 @@ ALWAYS use LaTeX with $ delimiters for mathematical symbols in tables to ensure 
           ],
           temperature: 0.7,
           top_p: 0.9,
-          max_tokens: 4096,
+          max_tokens: 16384,
           stream: false
         }),
         signal: controller.signal

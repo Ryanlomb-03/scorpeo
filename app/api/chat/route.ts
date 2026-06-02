@@ -162,7 +162,6 @@ ALWAYS use LaTeX with $ delimiters for mathematical symbols in tables to ensure 
     
     const fullPrompt = `${systemInstructions}\n\n${context}\nUser: ${message}`;
 
-    let reply = "";
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
@@ -183,7 +182,7 @@ ALWAYS use LaTeX with $ delimiters for mathematical symbols in tables to ensure 
           temperature: 0.7,
           top_p: 0.9,
           max_tokens: 16384,
-          stream: false
+          stream: true
         }),
         signal: controller.signal
       });
@@ -191,32 +190,76 @@ ALWAYS use LaTeX with $ delimiters for mathematical symbols in tables to ensure 
       clearTimeout(timeoutId);
 
       if (res.ok) {
-        const data = await res.json();
-        reply = data.choices[0]?.message?.content || "";
+        // Forward the streaming response directly from NVIDIA
+        const encoder = new TextEncoder();
+        const decoder = new TextDecoder();
+        const stream = new ReadableStream({
+          async start(controller) {
+            const reader = res.body?.getReader();
+            if (!reader) {
+              controller.close();
+              return;
+            }
+
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) {
+                  controller.close();
+                  break;
+                }
+
+                const chunk = decoder.decode(value, { stream: true });
+                const lines = chunk.split('\n');
+
+                for (const line of lines) {
+                  if (line.startsWith('data: ')) {
+                    const data = line.slice(6);
+                    if (data === '[DONE]') {
+                      controller.close();
+                      return;
+                    }
+
+                    try {
+                      const parsed = JSON.parse(data);
+                      const content = parsed.choices[0]?.delta?.content;
+                      if (content) {
+                        controller.enqueue(encoder.encode(content));
+                      }
+                    } catch (e) {
+                      // Skip invalid JSON
+                    }
+                  }
+                }
+              }
+            } catch (err) {
+              console.error("Stream reading error:", err);
+              controller.error(err);
+            }
+          },
+        });
+
+        return new Response(stream, {
+          headers: {
+            "Content-Type": "text/plain; charset=utf-8",
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+          },
+        });
       }
     } catch (fetchErr) {
       console.error("Failed to get response from NVIDIA API:", fetchErr);
     }
 
     // If the service failed to return a response, use our smart fallback instead of showing an error
-    if (!reply) {
-      console.warn("Using smart fallback response.");
-      reply = getFallbackResponse(message);
-    }
+    console.warn("Using smart fallback response.");
+    const reply = getFallbackResponse(message);
 
-    // Stream the response word-by-word with minimal delay
+    // Stream the fallback response
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
-        // Split by words and whitespace so formatting (spaces, newlines) is preserved
-        const words = reply.split(/(\s+)/);
-        for (const word of words) {
-          if (word) {
-            controller.enqueue(encoder.encode(word));
-            // 1ms delay for ultra-fast streaming
-            await new Promise((resolve) => setTimeout(resolve, 1));
-          }
-        }
+        controller.enqueue(encoder.encode(reply));
         controller.close();
       },
     });
@@ -224,7 +267,6 @@ ALWAYS use LaTeX with $ delimiters for mathematical symbols in tables to ensure 
     return new Response(stream, {
       headers: {
         "Content-Type": "text/plain; charset=utf-8",
-        "Transfer-Encoding": "chunked",
         "Cache-Control": "no-cache, no-transform",
         "Connection": "keep-alive",
       },

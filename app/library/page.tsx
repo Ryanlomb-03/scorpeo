@@ -1103,8 +1103,9 @@ function LibraryContent() {
         </div>
         )}
       </div>
+
       <LibraryPopup isOpen={showPopup} onClose={handlePopupClose} />
-      
+
       {/* Delete Confirmation Popup */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">

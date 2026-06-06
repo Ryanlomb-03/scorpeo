@@ -284,9 +284,6 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
         setDisliked(false);
       } else if (data.action === 'removed') {
         setLiked(false);
-      } else if (data.action === 'updated') {
-        setLiked(true);
-        setDisliked(false);
       }
     } catch (error) {
       console.error('Error liking message:', error);
@@ -315,9 +312,6 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
         setLiked(false);
       } else if (data.action === 'removed') {
         setDisliked(false);
-      } else if (data.action === 'updated') {
-        setDisliked(true);
-        setLiked(false);
       }
     } catch (error) {
       console.error('Error disliking message:', error);
@@ -494,20 +488,40 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
               <img src="/icons/copy.svg" alt="Copy" width="20" height="20" />
             )}
           </button>
-          <button
-            onClick={handleLike}
-            className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors"
-            title="Like"
-          >
-            <img src={liked ? "/icons/like-filled.svg" : "/icons/like.svg"} alt="Like" width="20" height="20" />
-          </button>
-          <button
-            onClick={handleDislike}
-            className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors"
-            title="Dislike"
-          >
-            <img src={disliked ? "/icons/dislike-filled.svg" : "/icons/dislike.svg"} alt="Dislike" width="20" height="20" />
-          </button>
+          {liked ? (
+            <button
+              onClick={handleLike}
+              className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors"
+              title="Like"
+            >
+              <img src="/icons/like-filled.svg" alt="Like" width="20" height="20" />
+            </button>
+          ) : disliked ? (
+            <button
+              onClick={handleDislike}
+              className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors"
+              title="Dislike"
+            >
+              <img src="/icons/dislike-filled.svg" alt="Dislike" width="20" height="20" />
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={handleLike}
+                className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors"
+                title="Like"
+              >
+                <img src="/icons/like.svg" alt="Like" width="20" height="20" />
+              </button>
+              <button
+                onClick={handleDislike}
+                className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors"
+                title="Dislike"
+              >
+                <img src="/icons/dislike.svg" alt="Dislike" width="20" height="20" />
+              </button>
+            </>
+          )}
           <button
             className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors"
             title="Retry"

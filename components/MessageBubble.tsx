@@ -276,49 +276,64 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
   if (isUser) {
     return (
       <div className="flex justify-end mb-3">
-        <div className="flex items-center gap-2 mr-2">
-          <button 
-            onClick={handleCopy}
-            className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-neutral-700 text-gray-400 hover:text-white transition-colors"
-            title={copied ? "Copied!" : "Copy"}
-          >
-            <Image src="/icons/copy.svg" alt="Copy" width="20" height="20" />
-          </button>
-          <button 
-            onClick={() => setIsEditing(true)}
-            className="p-1.5 rounded-full hover:bg-neutral-700 text-gray-400 hover:text-white transition-colors"
-            title="Edit"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
-            </svg>
-          </button>
-        </div>
-        <div className={`
-          max-w-[70%] outline-none
-          bg-[#2f2f2f] text-white ${isShort ? 'rounded-full px-5 py-3 text-base' : 'rounded-2xl text-sm px-4 py-3'}
-          leading-relaxed
-          relative
-        `}>
-          <div style={{ whiteSpace: 'pre-wrap' }}>
-            {getTruncatedText()}
+        <div className="flex flex-col items-end max-w-[70%] group">
+          <div className={`
+            outline-none
+            bg-[#2f2f2f] text-white ${isShort ? 'rounded-full px-5 py-3 text-base' : 'rounded-2xl text-sm px-4 py-3'}
+            leading-relaxed
+            relative
+          `}>
+            <div style={{ whiteSpace: 'pre-wrap' }}>
+              {getTruncatedText()}
+            </div>
+            {isLong && !expanded && (
+              <button 
+                onClick={() => setExpanded(!expanded)}
+                className="absolute top-2 right-2 cursor-pointer hover:opacity-70 transition-opacity z-10"
+              >
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ filter: 'brightness(0) invert(1)' }}>
+                <polyline points="6 9 12 15 18 9"/>
+                <polyline points="18 15 12 9 6 15"/>
+              </svg>
+              </button>
+            )}
+            {isLong && expanded && (
+              <button 
+                onClick={() => setExpanded(!expanded)}
+                className="absolute top-2 right-2 cursor-pointer hover:opacity-70 transition-opacity"
+              >
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ filter: 'brightness(0) invert(1)', transform: 'rotate(180deg)', transition: 'transform 0.2s' }}>
+                <polyline points="6 9 12 15 18 9"/>
+                <polyline points="18 15 12 9 6 15"/>
+              </svg>
+              </button>
+            )}
           </div>
-          {isLong && !expanded && (
+          <div className="flex items-center gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <button 
-              onClick={() => setExpanded(!expanded)}
-              className="absolute top-2 right-2 cursor-pointer hover:opacity-70 transition-opacity z-10"
+              onClick={handleCopy}
+              className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors"
+              title={copied ? "Copied!" : "Copy"}
             >
-              <Image src="/expand.svg" alt="Expand" width={18} height={18} style={{ filter: 'brightness(0) invert(1)' }} />
+              {copied ? (
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 6 9 17l-5-5"/>
+                </svg>
+              ) : (
+                <img src="/icons/copy.svg" alt="Copy" width="16" height="16" />
+              )}
             </button>
-          )}
-          {isLong && expanded && (
             <button 
-              onClick={() => setExpanded(!expanded)}
-              className="absolute top-2 right-2 cursor-pointer hover:opacity-70 transition-opacity"
+              onClick={() => setIsEditing(true)}
+              className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors"
+              title="Edit"
             >
-              <Image src="/expand.svg" alt="Expand" width={18} height={18} style={{ filter: 'brightness(0) invert(1)', transform: 'rotate(180deg)', transition: 'transform 0.2s' }} />
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+                <path d="M15 5l-4 4"/>
+              </svg>
             </button>
-          )}
+          </div>
         </div>
       </div>
     );
@@ -375,28 +390,34 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
         <div className="flex items-center gap-2 mt-2 ml-2">
           <button
             onClick={handleCopy}
-            className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-neutral-700 text-gray-400 hover:text-white transition-colors"
+            className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors"
             title={copied ? "Copied!" : "Copy"}
           >
-            <Image src={copied ? "/icons/copy.svg" : "/icons/copy.svg"} alt="Copy" width="20" height="20" />
+            {copied ? (
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 6 9 17l-5-5"/>
+              </svg>
+            ) : (
+              <img src="/icons/copy.svg" alt="Copy" width="20" height="20" />
+            )}
           </button>
           <button
-            className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-neutral-700 text-gray-400 hover:text-white transition-colors"
+            className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors"
             title="Like"
           >
-            <Image src="/icons/like.svg" alt="Like" width="20" height="20" />
+            <img src="/icons/like.svg" alt="Like" width="20" height="20" />
           </button>
           <button
-            className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-neutral-700 text-gray-400 hover:text-white transition-colors"
+            className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors"
             title="Dislike"
           >
-            <Image src="/icons/dislike.svg" alt="Dislike" width="20" height="20" />
+            <img src="/icons/dislike.svg" alt="Dislike" width="20" height="20" />
           </button>
           <button
-            className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-neutral-700 text-gray-400 hover:text-white transition-colors"
+            className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors"
             title="Retry"
           >
-            <Image src="/icons/retry.svg" alt="Retry" width="20" height="20" />
+            <img src="/icons/retry.svg" alt="Retry" width="20" height="20" />
           </button>
         </div>
       </div>

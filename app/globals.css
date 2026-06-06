@@ -1,10 +1,53 @@
+/* Tailwind CSS directives - processed by PostCSS */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* Local Inter Font */
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/inter-regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/inter-medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/inter-semibold.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Local JetBrains Mono Font */
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/jetbrains-mono-regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/jetbrains-mono-medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
 @layer base {
   html {
-    font-family: var(--font-inter), system-ui, sans-serif;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
 }
 
@@ -39,7 +82,7 @@ body {
 body {
   background: #171717;
   color: white;
-  font-family: var(--font-inter), system-ui, sans-serif;
+  font-family: 'Inter', system-ui, sans-serif;
 }
 
 ::-webkit-scrollbar {
@@ -135,7 +178,7 @@ body {
 
 .code-block code {
   color: #e6edf3;
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-family: 'JetBrains Mono', monospace;
   font-size: 13px;
   line-height: 1.6;
 }

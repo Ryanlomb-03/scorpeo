@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useChat } from "@/context/ChatContext";
+import { useAuth } from "@/context/AuthContext";
 import MessageBubble from "@/components/MessageBubble";
 import ChatInput from "@/components/ChatInput";
 import Sidebar from "@/components/Sidebar";
@@ -15,10 +16,18 @@ export default function ChatPage() {
   const [mounted, setMounted] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const { selectConversation, loading, messages, sendMessage, currentConversation, resetChat, isSending } = useChat();
+  const { user } = useAuth();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const loadedConversationRef = useRef<string | null>(null);
-  const popupRef = useRef<HTMLDivElement>(null);
-  const hasAnimatedRef = useRef<Record<string, boolean>>({});
+
+  // Update browser tab title based on conversation title
+  useEffect(() => {
+    if (currentConversation?.title) {
+      document.title = currentConversation.title;
+    } else {
+      document.title = "Scorpio";
+    }
+  }, [currentConversation?.title]);
 
   useEffect(() => {
     setMounted(true);
@@ -45,15 +54,6 @@ export default function ChatPage() {
       selectConversation(id);
     }
   }, [params.id, mounted]);
-
-  // Trigger .popup-enter { animation: popup-enter 0.3s ease-out; }first appear for a conversation (including cached)
-  useEffect(() => {
-    const convId = currentConversation?.id;
-    if (convId && messages.length > 0 && popupRef.current && !hasAnimatedRef.current[convId]) {
-      popupRef.current.classList.add('popup-enter');
-      hasAnimatedRef.current[convId] = true;
-    }
-  }, [messages, currentConversation]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -92,7 +92,7 @@ export default function ChatPage() {
             </div>
           </div>
         ) : messages.length > 0 ? (
-          <div ref={popupRef} className="flex-1 overflow-y-auto px-6 pt-4 pb-24 scrollbar-thin scrollbar-thumb-neutral-600 scrollbar-track-transparent relative">
+          <div className="flex-1 overflow-y-auto px-6 pt-4 pb-24 scrollbar-thin scrollbar-thumb-neutral-600 scrollbar-track-transparent relative">
             <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-neutral-900 to-transparent pointer-events-none z-10" />
             <div className="max-w-3xl mx-auto space-y-4">
               {messages.map((msg) => (
@@ -102,6 +102,8 @@ export default function ChatPage() {
                   content={msg.content} 
                   isLoading={msg.isLoading}
                   loadingPhase={msg.loadingPhase}
+                  messageId={msg.id}
+                  userId={user?.uid}
                 />
               ))}
               <div ref={messagesEndRef} />

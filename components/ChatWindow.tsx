@@ -5,6 +5,7 @@ import ChatInput from "./ChatInput";
 import MessageBubble from "./MessageBubble";
 import { motion, AnimatePresence } from "framer-motion";
 import { useChat } from "@/context/ChatContext";
+import { useAuth } from "@/context/AuthContext";
 
 const greetings = [
   "Hi, I'm Scorpio. Ask carefully — I don't miss details.",
@@ -61,6 +62,7 @@ export default function ChatWindow({ onLoginClick }: { onLoginClick?: () => void
   const [greeting, setGreeting] = useState("");
   const [showChat, setShowChat] = useState(false);
   const { messages, sendMessage, currentConversation, pendingConversationId, isSending, loading } = useChat();
+  const { user } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -122,6 +124,8 @@ export default function ChatWindow({ onLoginClick }: { onLoginClick?: () => void
                     content={msg.content} 
                     isLoading={msg.isLoading}
                     loadingPhase={msg.loadingPhase}
+                    messageId={msg.id}
+                    userId={user?.uid}
                   />
                 ))}
               </div>

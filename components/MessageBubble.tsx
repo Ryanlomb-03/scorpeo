@@ -22,12 +22,14 @@ const EQUATION_SYMBOLS: Record<string, string> = {
   "\\nu": "Nu - Index notation (spacetime indices)",
 };
 
-export default function MessageBubble({ role, content, onEdit, isLoading, loadingPhase }: { role: string; content: string; onEdit?: (newContent: string) => void; isLoading?: boolean; loadingPhase?: number }) {
+export default function MessageBubble({ role, content, onEdit, isLoading, loadingPhase, messageId, userId }: { role: string; content: string; onEdit?: (newContent: string) => void; isLoading?: boolean; loadingPhase?: number; messageId?: string; userId?: string }) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(content);
   const [showTOC, setShowTOC] = useState(false);
+  const [liked, setLiked] = useState(false);
+  const [disliked, setDisliked] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const headingIndexRef = useRef(0);
 
@@ -37,6 +39,35 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
   }, [content]);
 
   const isUser = role === "user";
+
+  // Fetch user's existing reaction when messageId and userId are available
+  useEffect(() => {
+    if (messageId && userId && !isUser) {
+      fetchReaction();
+    }
+  }, [messageId, userId, isUser]);
+
+  const fetchReaction = async () => {
+    try {
+      const response = await fetch(`/api/reactions?messageId=${messageId}`, {
+        headers: {
+          'x-user-id': userId || ''
+        }
+      });
+      const data = await response.json();
+      if (data.reaction) {
+        if (data.reaction.reaction_type === 'like') {
+          setLiked(true);
+          setDisliked(false);
+        } else if (data.reaction.reaction_type === 'dislike') {
+          setDisliked(true);
+          setLiked(false);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching reaction:', error);
+    }
+  };
 
   useEffect(() => {
     if (!isUser && typeof window !== 'undefined' && (window as any).hljs) {
@@ -231,6 +262,68 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
     setIsEditing(false);
   };
 
+  const handleLike = async () => {
+    if (!messageId || !userId) return;
+    
+    try {
+      const response = await fetch('/api/reactions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': userId
+        },
+        body: JSON.stringify({
+          messageId,
+          reactionType: 'like'
+        })
+      });
+      const data = await response.json();
+      
+      if (data.action === 'created') {
+        setLiked(true);
+        setDisliked(false);
+      } else if (data.action === 'removed') {
+        setLiked(false);
+      } else if (data.action === 'updated') {
+        setLiked(true);
+        setDisliked(false);
+      }
+    } catch (error) {
+      console.error('Error liking message:', error);
+    }
+  };
+
+  const handleDislike = async () => {
+    if (!messageId || !userId) return;
+    
+    try {
+      const response = await fetch('/api/reactions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': userId
+        },
+        body: JSON.stringify({
+          messageId,
+          reactionType: 'dislike'
+        })
+      });
+      const data = await response.json();
+      
+      if (data.action === 'created') {
+        setDisliked(true);
+        setLiked(false);
+      } else if (data.action === 'removed') {
+        setDisliked(false);
+      } else if (data.action === 'updated') {
+        setDisliked(true);
+        setLiked(false);
+      }
+    } catch (error) {
+      console.error('Error disliking message:', error);
+    }
+  };
+
   if (isEditing) {
     const isEditShort = content.length <= 30 && !content.includes('\n');
     
@@ -402,16 +495,18 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
             )}
           </button>
           <button
+            onClick={handleLike}
             className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors"
             title="Like"
           >
-            <img src="/icons/like.svg" alt="Like" width="20" height="20" />
+            <img src={liked ? "/icons/like-filled.svg" : "/icons/like.svg"} alt="Like" width="20" height="20" />
           </button>
           <button
+            onClick={handleDislike}
             className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors"
             title="Dislike"
           >
-            <img src="/icons/dislike.svg" alt="Dislike" width="20" height="20" />
+            <img src={disliked ? "/icons/dislike-filled.svg" : "/icons/dislike.svg"} alt="Dislike" width="20" height="20" />
           </button>
           <button
             className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors"

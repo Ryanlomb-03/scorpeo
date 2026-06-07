@@ -57,13 +57,13 @@ CREATE TABLE IF NOT EXISTS model_health_log (
   timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Indexes
-CREATE INDEX IF NOT EXISTS idx_models_enabled ON models(enabled) WHERE enabled = true;
+-- Indexes (simplified to avoid IMMUTABLE requirement)
+CREATE INDEX IF NOT EXISTS idx_models_enabled ON models(enabled);
 CREATE INDEX IF NOT EXISTS idx_models_status ON models(status);
-CREATE INDEX IF NOT EXISTS idx_models_priority ON models(priority) WHERE enabled = true;
+CREATE INDEX IF NOT EXISTS idx_models_priority ON models(priority);
 
 CREATE INDEX IF NOT EXISTS idx_cache_hash ON cached_responses(hash);
-CREATE INDEX IF NOT EXISTS idx_cache_expires ON cached_responses(expires_at) WHERE expires_at > CURRENT_TIMESTAMP;
+CREATE INDEX IF NOT EXISTS idx_cache_expires ON cached_responses(expires_at);
 
 CREATE INDEX IF NOT EXISTS idx_health_model_id ON model_health_log(model_id);
 CREATE INDEX IF NOT EXISTS idx_health_timestamp ON model_health_log(timestamp DESC);

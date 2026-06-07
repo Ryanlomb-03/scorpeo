@@ -59,7 +59,6 @@ CREATE TABLE IF NOT EXISTS model_health_log (
 
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_models_enabled ON models(enabled) WHERE enabled = true;
-CREATE INDEX IF NOT EXISTS idx_models_roles ON models USING GIN(roles);
 CREATE INDEX IF NOT EXISTS idx_models_status ON models(status);
 CREATE INDEX IF NOT EXISTS idx_models_priority ON models(priority) WHERE enabled = true;
 
@@ -87,7 +86,7 @@ BEGIN
     successful_requests = successful_requests + CASE WHEN p_success THEN 1 ELSE 0 END,
     failed_requests = failed_requests + CASE WHEN NOT p_success THEN 1 ELSE 0 END,
     timeout_count = timeout_count + CASE WHEN p_error_type = 'timeout' THEN 1 ELSE 0 END,
-    average_latency = (average_latency * (total_requests - 1) + p_latency) / total_requests,
+    average_latency = (average_latency * (total_requests - 1) + p_latency) / NULLIF(total_requests, 1),
     success_rate = (successful_requests + CASE WHEN p_success THEN 1 ELSE 0 END)::DECIMAL / NULLIF(total_requests + 1, 0) * 100,
     last_checked = CURRENT_TIMESTAMP,
     last_used = CURRENT_TIMESTAMP,
@@ -129,16 +128,12 @@ BEGIN
       -- Calculate health score: 0.35 * speed + 0.30 * availability + 0.20 * domain + 0.15 * success_rate
       (m.speed_score * 0.35) +
       (m.success_rate * 0.30) +
-      (CASE 
-        WHEN p_roles = ANY(m.roles) THEN m.speed_score * 0.20
-        ELSE 0
-      END) +
+      (m.speed_score * 0.20) +
       (m.success_rate * 0.15)
     ) as health_score
   FROM models m
   WHERE m.enabled = true
     AND m.status = 'active'
-    AND p_roles = ANY(m.roles)
   ORDER BY 
     health_score DESC,
     m.average_latency ASC,

@@ -61,11 +61,13 @@ export class ModelRouter {
 
   private async selectBestModel(roles: string[]): Promise<ModelConfig | null> {
     try {
+      // Get all healthy models first, then filter by roles in application
       const { data, error } = await supabase
-        .rpc('get_best_model', {
-          p_intent: 'chat', // This can be refined based on roles
-          p_roles: roles
-        });
+        .from('models')
+        .select('*')
+        .eq('enabled', true)
+        .eq('status', 'active')
+        .order('priority', { ascending: false });
 
       if (error) {
         console.error('Error selecting best model:', error);
@@ -76,19 +78,60 @@ export class ModelRouter {
         return this.getFallbackModel(roles);
       }
 
+      // Filter by roles and calculate health score in application
+      const filteredModels = (data as any[]).filter(model => {
+        return roles.some(role => model.roles.includes(role));
+      });
+
+      if (filteredModels.length === 0) {
+        return this.getFallbackModel(roles);
+      }
+
+      // Calculate health score and sort
+      const scoredModels = filteredModels.map(model => ({
+        ...model,
+        health_score: this.calculateHealthScore(model)
+      }));
+
+      scoredModels.sort((a, b) => {
+        // Sort by health score descending, then latency ascending, then priority descending
+        if (b.health_score !== a.health_score) {
+          return b.health_score - a.health_score;
+        }
+        if (a.average_latency !== b.average_latency) {
+          return a.average_latency - b.average_latency;
+        }
+        return b.priority - a.priority;
+      });
+
+      const bestModel = scoredModels[0];
       return {
-        id: data[0].model_id,
-        name: data[0].model_name,
+        id: bestModel.id,
+        name: bestModel.name,
         provider: 'NVIDIA', // Hardcoded for now, can be stored in DB
-        endpoint: data[0].endpoint,
-        api_key_param: data[0].api_key_param,
-        priority: data[0].priority,
-        health_score: parseFloat(data[0].health_score)
+        endpoint: bestModel.endpoint,
+        api_key_param: bestModel.api_key_param,
+        priority: bestModel.priority,
+        health_score: bestModel.health_score
       };
     } catch (error) {
       console.error('Error in model selection:', error);
       return this.getFallbackModel(roles);
     }
+  }
+
+  private calculateHealthScore(model: any): number {
+    const speedWeight = 0.35;
+    const availabilityWeight = 0.30;
+    const domainWeight = 0.20;
+    const successWeight = 0.15;
+
+    return (
+      (model.speed_score * speedWeight) +
+      (model.success_rate * availabilityWeight) +
+      (model.speed_score * domainWeight) +
+      (model.success_rate * successWeight)
+    );
   }
 
   private getFallbackModel(roles: string[]): ModelConfig | null {

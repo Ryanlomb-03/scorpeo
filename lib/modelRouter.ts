@@ -156,7 +156,7 @@ export class ModelRouter {
     return key;
   }
 
-  private async checkCache(message: string): Promise<{ hash: string; response: string } | null> {
+  public async checkCache(message: string): Promise<{ hash: string; response: string } | null> {
     try {
       const hash = this.generateHash(message);
       const { data, error } = await supabase

@@ -1,8 +1,5 @@
 import { NextResponse } from "next/server";
-
-// NVIDIA API for title generation (separate key from main chat)
-const NVIDIA_TITLE_KEY = process.env.NVIDIA_TITLE_KEY || "";
-const NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1";
+import { modelRouter } from "@/lib/modelRouter";
 
 export async function POST(req: Request) {
   try {
@@ -12,90 +9,98 @@ export async function POST(req: Request) {
       return NextResponse.json({ title: "New Chat" }, { status: 400 });
     }
 
-    // Direct, highly specific, and language-accurate prompt
-    const systemPrompt = `Analyze this conversation opener and create a clean, descriptive 2-4 word title that captures the essence or intent.
+    // Use AI Router to select the fastest model for title generation
+    const routingResult = await modelRouter.route(message);
+    
+    if (routingResult.cached && routingResult.cache_key) {
+      // Cache hit - return cached title from routing
+      const title = message.slice(0, 30) + (message.length > 30 ? "..." : "");
+      return NextResponse.json({ title, cached: true });
+    }
 
-CRITICAL RULES:
-1. The title MUST be in the same language as the conversation opener message (e.g. if the message is in Japanese, write the title in Japanese; if English, write in English).
-2. Capture the actual meaning directly. Do NOT append generic words like "Query", "Chat", "Discussion", "Topic", "Question", or "Conversation".
-3. Keep it natural and simple. Do NOT override greetings with abstract themes unless the opener actually asks for them.
-4. Return ONLY the clean title itself, with NO surrounding quotes, introductory text, punctuation, or explanations.`;
+    const model = routingResult.model;
+    const apiKey = routingResult.api_key;
 
-    let title = "";
+    if (!model || !apiKey) {
+      // Fallback to simple message truncation
+      const title = message.slice(0, 30) + (message.length > 30 ? "..." : "");
+      return NextResponse.json({ title });
+    }
 
-    // --- NVIDIA API with streaming ---
-    if (NVIDIA_TITLE_KEY) {
-      try {
-        const res = await fetch(`${NVIDIA_BASE_URL}/chat/completions`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${NVIDIA_TITLE_KEY}`
-          },
-          body: JSON.stringify({
-            model: "z-ai/glm-5.1",
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: `Message: "${message}"` }
-            ],
-            temperature: 1,
-            top_p: 1,
-            max_tokens: 16384,
-            stream: true
-          }),
-        });
+    // Optimized prompt for fast title generation
+    const systemPrompt = `Create a clean, descriptive 2-4 word title for this conversation opener. Return ONLY the title, no quotes or explanations. Same language as the message.`;
 
-        if (res.ok) {
-          // Process streaming response
-          const decoder = new TextDecoder();
-          const reader = res.body?.getReader();
+    // Fast parameters for title generation
+    const titleParameters = {
+      temperature: 0.3,           // Low temperature for consistency
+      top_p: 0.8,               // Focused sampling
+      max_tokens: 50,            // Very short - titles are brief
+      stream: false              // No streaming needed for short titles
+    };
 
-          if (reader) {
-            let buffer = "";
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
+    const startTime = Date.now();
+    let errorType: string | undefined;
 
-              buffer += decoder.decode(value, { stream: true });
-              const lines = buffer.split('\n');
-              buffer = lines.pop() || "";
+    try {
+      const res = await fetch(model.endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: "minimaxai/minimax-m2.7", // Can be made dynamic based on model registry
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: `Message: "${message}"` }
+          ],
+          ...titleParameters
+        }),
+      });
 
-              for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                  const data = line.slice(6).trim();
-                  if (data === '[DONE]') break;
+      const latency = Date.now() - startTime;
 
-                  try {
-                    const parsed = JSON.parse(data);
-                    const content = parsed.choices?.[0]?.delta?.content;
-                    if (content) {
-                      title += content;
-                    }
-                  } catch (e) {
-                    // Skip invalid JSON chunks
-                  }
-                }
-              }
-            }
-          }
-        } else {
-          const errorText = await res.text().catch(() => "unknown");
-          console.error(`NVIDIA title API error: ${res.status} - ${errorText}`);
+      if (res.ok) {
+        const data = await res.json();
+        let title = data.choices?.[0]?.message?.content || "";
+
+        // Clean up title formatting
+        title = title.replace(/^["'「」]|["'「」]$/g, '').trim();
+        
+        // Enforce title length limits
+        if (!title || title.length > 50) {
+          title = message.slice(0, 30) + (message.length > 30 ? "..." : "");
         }
-      } catch (err) {
-        console.error("NVIDIA title API failed:", err);
+
+        // Cache the title if it's a good one
+        if (title.length > 3 && title !== message.slice(0, 30)) {
+          await modelRouter.cacheResponse(message, title, model.id, 'title', 48); // 48 hour cache
+        }
+
+        // Update health metrics
+        await modelRouter.updateHealth(model.id, latency, true);
+
+        return NextResponse.json({ title });
+      } else {
+        errorType = res.status === 429 ? '429' : res.status === 500 ? '500' : 'other';
+        console.error(`Model ${model.name} title API error: ${res.status}`);
+        await modelRouter.updateHealth(model.id, latency, false, errorType);
       }
+    } catch (apiErr: any) {
+      const latency = Date.now() - startTime;
+      errorType = apiErr.name === 'TimeoutError' ? 'timeout' : 'other';
+      console.error(`${model.name} title API request failed:`, apiErr?.message);
+      await modelRouter.updateHealth(model.id, latency, false, errorType);
     }
 
-    // Clean up title formatting
-    title = title.replace(/^["'「」]|["'「」]$/g, '').trim();
-    if (!title || title.length > 50) {
-      title = message.slice(0, 30) + (message.length > 30 ? "..." : "");
-    }
-
+    // Fallback to simple message truncation
+    const title = message.slice(0, 30) + (message.length > 30 ? "..." : "");
     return NextResponse.json({ title });
+
   } catch (error) {
     console.error("Title generation route error:", error);
-    return NextResponse.json({ title: "New Chat" }, { status: 500 });
+    const { message } = await req.json().catch(() => ({ message: '' }));
+    const title = message.slice(0, 30) + (message.length > 30 ? "..." : "");
+    return NextResponse.json({ title }, { status: 500 });
   }
 }

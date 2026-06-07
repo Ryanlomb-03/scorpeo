@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import remarkGfm from 'remark-gfm';
 import rehypeKatex from 'rehype-katex';
+import StreamingCodeBlock from './StreamingCodeBlock';
 import 'katex/dist/katex.min.css';
 
 const LIMIT = 150;
@@ -137,14 +138,6 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
     }
   };
 
-  useEffect(() => {
-    if (!isUser && typeof window !== 'undefined' && (window as any).hljs) {
-      document.querySelectorAll('pre code').forEach((block) => {
-        (window as any).hljs.highlightElement(block);
-      });
-    }
-  }, [content, isUser]);
-
   // Generate table of contents from markdown content
   const tocData = (() => {
     const headings: Array<{ id: string; text: string; level: string }> = [];
@@ -214,30 +207,14 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
 
             if (!inline) {
               return (
-                <div className="my-4 rounded-lg overflow-hidden border border-[#30363d]">
-                  <div className="flex items-center justify-between bg-[#161b22] px-4 py-2.5 border-b border-[#30363d]">
-                    <div className="flex items-center gap-2">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#8b949e]">
-                        <polyline points="16 18 22 12 16 6"/>
-                        <polyline points="8 6 2 12 8 18"/>
-                      </svg>
-                      <span className="text-[#8b949e] text-xs font-medium capitalize">{language}</span>
-                    </div>
-                    <button
-                      onClick={() => navigator.clipboard.writeText(codeContent)}
-                      className="flex items-center gap-1.5 px-2 py-1 rounded hover:bg-[#30363d] text-[#8b949e] hover:text-[#e6edf3] transition-colors text-xs"
-                      title="Copy code"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
-                        <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
-                      </svg>
-                      Copy code
-                    </button>
-                  </div>
-                  <pre className="code-block p-4 overflow-x-auto m-0" style={{ fontFamily: "'JetBrains Mono', 'SF Mono', monospace", background: '#0d1117' }}>
-                    <code className={className} {...props}>{children}</code>
-                  </pre>
+                <div className="my-4">
+                  <StreamingCodeBlock 
+                    streamContent={codeContent}
+                    language={language}
+                    theme="github-dark"
+                    isComplete={!isLoading}
+                    onStartMessage={isLoading ? "Generating code..." : "Here's the code for this solution:"}
+                  />
                 </div>
               );
             }

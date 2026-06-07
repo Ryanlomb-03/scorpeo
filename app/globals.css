@@ -85,8 +85,10 @@ body {
   font-family: 'Inter', system-ui, sans-serif;
 }
 
+/* Premium thin floating scrollbar for code blocks */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -94,12 +96,35 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: #555;
-  border-radius: 3px;
+  background-color: rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: #666;
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+/* Specific scrollbar for code blocks */
+.shiki::-webkit-scrollbar,
+pre::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.shiki::-webkit-scrollbar-track,
+pre::-webkit-scrollbar-track {
+  background: rgba(13, 17, 23, 0.5);
+}
+
+.shiki::-webkit-scrollbar-thumb,
+pre::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+}
+
+.shiki::-webkit-scrollbar-thumb:hover,
+pre::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.25);
 }
 
 .ai-ring {

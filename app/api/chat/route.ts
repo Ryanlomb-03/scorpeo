@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
 import supabase from "@/lib/db";
 import * as zlib from "zlib";
-
-// NVIDIA API for chat
-const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY || "";
-const NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1";
+import { modelRouter } from "@/lib/modelRouter";
 
 // Generate smart, contextual responses if the AI service is completely unreachable
 function getFallbackResponse(message: string): string {
@@ -37,6 +34,48 @@ export async function POST(req: Request) {
   }
 
   try {
+    // Step 1: Route the request using the AI Router
+    const routingResult = await modelRouter.route(message);
+    
+    // Step 2: If cached response exists, return it immediately
+    if (routingResult.cached && routingResult.cache_key) {
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        async start(controller) {
+          const { data } = await supabase
+            .from('cached_responses')
+            .select('response')
+            .eq('hash', routingResult.cache_key!)
+            .single();
+          
+          if (data) {
+            controller.enqueue(encoder.encode(data.response));
+          }
+          controller.close();
+        },
+      });
+
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+          "Connection": "keep-alive",
+          "X-Cached": "true"
+        },
+      });
+    }
+
+    // Step 3: Use the selected model or fallback
+    const model = routingResult.model;
+    const apiKey = routingResult.api_key;
+    const parameters = routingResult.parameters;
+    const intent = routingResult.intent;
+
+    if (!model || !apiKey) {
+      throw new Error('No available model for this request');
+    }
+
+    const startTime = Date.now();
     const systemInstructions = `CRITICAL INSTRUCTION: For mathematical equations in the main text, use standard markdown format with $$ delimiters.
 
 For mathematical formulas, ALWAYS use this exact format:
@@ -80,95 +119,131 @@ ALWAYS use LaTeX with $ delimiters for mathematical symbols in tables to ensure 
       { role: "user", content: message }
     ];
 
-    // --- NVIDIA API with streaming ---
-    if (NVIDIA_API_KEY) {
-      try {
-        const res = await fetch(`${NVIDIA_BASE_URL}/chat/completions`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${NVIDIA_API_KEY}`
-          },
-          body: JSON.stringify({
-            model: "minimaxai/minimax-m2.7",
-            messages: chatMessages,
-            temperature: 1,
-            top_p: 0.95,
-            max_tokens: 8192,
-            stream: true
-          }),
-        });
+    let fullResponse = "";
+    let responseSuccess = false;
+    let errorType: string | undefined;
 
-        if (res.ok) {
-          // Forward the streaming response directly from NVIDIA
-          const encoder = new TextEncoder();
-          const decoder = new TextDecoder();
-          const stream = new ReadableStream({
-            async start(streamController) {
-              const reader = res.body?.getReader();
-              if (!reader) {
-                streamController.close();
-                return;
-              }
+    try {
+      const res = await fetch(model.endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: intent.type === 'coding' ? "minimaxai/minimax-m2.7" : "minimaxai/minimax-m2.7", // Can be made dynamic based on model registry
+          messages: chatMessages,
+          ...parameters
+        }),
+      });
 
-              try {
-                let buffer = "";
-                while (true) {
-                  const { done, value } = await reader.read();
-                  if (done) {
-                    streamController.close();
-                    break;
+      const latency = Date.now() - startTime;
+
+      if (res.ok) {
+        responseSuccess = true;
+        
+        // Forward the streaming response
+        const encoder = new TextEncoder();
+        const decoder = new TextDecoder();
+        const stream = new ReadableStream({
+          async start(streamController) {
+            const reader = res.body?.getReader();
+            if (!reader) {
+              streamController.close();
+              return;
+            }
+
+            try {
+              let buffer = "";
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) {
+                  // Cache the complete response
+                  if (intent.complexity <= 3) { // Only cache simple queries
+                    await modelRouter.cacheResponse(
+                      message, 
+                      fullResponse, 
+                      model.id, 
+                      intent.type, 
+                      24 // 24 hour cache
+                    );
                   }
+                  
+                  // Update health metrics
+                  await modelRouter.updateHealth(
+                    model.id, 
+                    latency, 
+                    true
+                  );
+                  
+                  streamController.close();
+                  break;
+                }
 
-                  buffer += decoder.decode(value, { stream: true });
-                  const lines = buffer.split('\n');
-                  buffer = lines.pop() || ""; // Keep incomplete line in buffer
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || ""; // Keep incomplete line in buffer
 
-                  for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                      const data = line.slice(6).trim();
-                      if (data === '[DONE]') {
-                        streamController.close();
-                        return;
+                for (const line of lines) {
+                  if (line.startsWith('data: ')) {
+                    const data = line.slice(6).trim();
+                    if (data === '[DONE]') {
+                      streamController.close();
+                      return;
+                    }
+
+                    try {
+                      const parsed = JSON.parse(data);
+                      const content = parsed.choices?.[0]?.delta?.content;
+                      if (content) {
+                        fullResponse += content;
+                        streamController.enqueue(encoder.encode(content));
                       }
-
-                      try {
-                        const parsed = JSON.parse(data);
-                        const content = parsed.choices?.[0]?.delta?.content;
-                        if (content) {
-                          streamController.enqueue(encoder.encode(content));
-                        }
-                      } catch (e) {
-                        // Skip invalid JSON chunks
-                      }
+                    } catch (e) {
+                      // Skip invalid JSON chunks
                     }
                   }
                 }
-              } catch (err) {
-                console.error("NVIDIA stream reading error:", err);
-                streamController.error(err);
               }
-            },
-          });
+            } catch (err) {
+              errorType = 'parse_error';
+              await modelRouter.updateHealth(model.id, latency, false, errorType);
+              streamController.error(err);
+            }
+          },
+        });
 
-          return new Response(stream, {
-            headers: {
-              "Content-Type": "text/plain; charset=utf-8",
-              "Cache-Control": "no-cache, no-transform",
-              "Connection": "keep-alive",
-            },
-          });
-        } else {
-          const errorText = await res.text().catch(() => "unknown error");
-          console.error(`NVIDIA API error: ${res.status} - ${errorText}`);
-        }
-      } catch (nvidiaErr: any) {
-        console.error("NVIDIA API request failed:", nvidiaErr?.message || nvidiaErr);
+        return new Response(stream, {
+          headers: {
+            "Content-Type": "text/plain; charset=utf-8",
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Model": model.id,
+            "X-Intent": intent.type,
+          },
+        });
+      } else {
+        responseSuccess = false;
+        errorType = res.status === 429 ? '429' : res.status === 500 ? '500' : 'other';
+        const errorText = await res.text().catch(() => "unknown error");
+        console.error(`${model.name} API error: ${res.status} - ${errorText}`);
+        
+        // Update health metrics
+        await modelRouter.updateHealth(model.id, latency, false, errorType);
       }
+    } catch (apiErr: any) {
+      const latency = Date.now() - startTime;
+      errorType = apiErr.name === 'TimeoutError' ? 'timeout' : 'other';
+      responseSuccess = false;
+      
+      console.error(`${model.name} API request failed:`, apiErr?.message || apiErr);
+      
+      // Update health metrics
+      await modelRouter.updateHealth(model.id, latency, false, errorType);
     }
 
     // --- Fallback: smart static response ---
-    console.warn("NVIDIA API failed. Using static fallback response.");
+    console.warn("All models failed. Using static fallback response.");
     const reply = getFallbackResponse(message);
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
@@ -183,6 +258,7 @@ ALWAYS use LaTeX with $ delimiters for mathematical symbols in tables to ensure 
         "Content-Type": "text/plain; charset=utf-8",
         "Cache-Control": "no-cache, no-transform",
         "Connection": "keep-alive",
+        "X-Fallback": "true"
       },
     });
 

@@ -22,7 +22,7 @@ const EQUATION_SYMBOLS: Record<string, string> = {
   "\\nu": "Nu - Index notation (spacetime indices)",
 };
 
-export default function MessageBubble({ role, content, onEdit, isLoading, loadingPhase, messageId, userId }: { role: string; content: string; onEdit?: (newContent: string) => void; isLoading?: boolean; loadingPhase?: number; messageId?: string; userId?: string }) {
+export default function MessageBubble({ role, content, onEdit, isLoading, loadingPhase, messageId, userId, conversationId, onRetry, onVersionChange }: { role: string; content: string; onEdit?: (newContent: string) => void; isLoading?: boolean; loadingPhase?: number; messageId?: string; userId?: string; conversationId?: string; onRetry?: (messageId: string) => void; onVersionChange?: (messageId: string, version: number, content: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -30,6 +30,11 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
   const [showTOC, setShowTOC] = useState(false);
   const [liked, setLiked] = useState(false);
   const [disliked, setDisliked] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [currentVersion, setCurrentVersion] = useState(1);
+  const [totalVersions, setTotalVersions] = useState(1);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [versionHistory, setVersionHistory] = useState<any[]>([]);
   const contentRef = useRef<HTMLDivElement>(null);
   const headingIndexRef = useRef(0);
 
@@ -66,6 +71,69 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
       }
     } catch (error) {
       console.error('Error fetching reaction:', error);
+    }
+  };
+
+  // Fetch message versions for retry system
+  useEffect(() => {
+    if (messageId && conversationId && !isUser) {
+      fetchMessageVersions();
+    }
+  }, [messageId, conversationId, isUser]);
+
+  const fetchMessageVersions = async () => {
+    try {
+      const response = await fetch(`/api/retry?messageId=${messageId}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.length > 0) {
+          const messageData = data[0];
+          setTotalVersions(messageData.total_versions || 1);
+          setCurrentVersion(messageData.current_version || 1);
+          setVersionHistory(messageData.all_versions || []);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching message versions:', error);
+    }
+  };
+
+  const handleRetry = async () => {
+    if (!messageId || !conversationId || isRetrying) return;
+    
+    setIsRetrying(true);
+    try {
+      if (onRetry) {
+        await onRetry(messageId);
+        // After retry completes, fetch the new version data
+        setTimeout(() => fetchMessageVersions(), 1000);
+      }
+    } catch (error) {
+      console.error('Error during retry:', error);
+    } finally {
+      setIsRetrying(false);
+    }
+  };
+
+  const handleVersionChange = (newVersion: number) => {
+    if (newVersion < 1 || newVersion > totalVersions) return;
+    
+    const version = versionHistory.find(v => v.version === newVersion);
+    if (version && onVersionChange) {
+      setCurrentVersion(newVersion);
+      onVersionChange(messageId || '', newVersion, version.content);
+    }
+  };
+
+  const goToPreviousVersion = () => {
+    if (currentVersion > 1) {
+      handleVersionChange(currentVersion - 1);
+    }
+  };
+
+  const goToNextVersion = () => {
+    if (currentVersion < totalVersions) {
+      handleVersionChange(currentVersion + 1);
     }
   };
 
@@ -523,12 +591,44 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
             </>
           )}
           <button
-            className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors"
-            title="Retry"
+            onClick={handleRetry}
+            disabled={isRetrying}
+            className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title={isRetrying ? "Generating..." : "Retry"}
           >
-            <img src="/icons/retry.svg" alt="Retry" width="20" height="20" />
+            {isRetrying ? (
+              <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full" />
+            ) : (
+              <img src="/icons/retry.svg" alt="Retry" width="20" height="20" />
+            )}
           </button>
         </div>
+        {/* Version Navigation */}
+        {totalVersions > 1 && (
+          <div className="flex items-center gap-2 mt-2 text-sm text-neutral-400">
+            <button
+              onClick={goToPreviousVersion}
+              disabled={currentVersion === 1}
+              className="p-1 rounded hover:bg-neutral-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                <path fillRule="evenodd" d="M11.354 1.646a.5.5 0 0 1 0 .708L5.707 8l5.647 5.646a.5.5 0 0 1-.708.708l-6-6a.5.5 0 0 1 0-.708l6-6a.5.5 0 0 1 .708 0z"/>
+              </svg>
+            </button>
+            <span className="text-neutral-500 font-medium">
+              {currentVersion}/{totalVersions}
+            </span>
+            <button
+              onClick={goToNextVersion}
+              disabled={currentVersion === totalVersions}
+              className="p-1 rounded hover:bg-neutral-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                <path fillRule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z"/>
+              </svg>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

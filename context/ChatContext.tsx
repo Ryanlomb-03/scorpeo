@@ -11,6 +11,9 @@ export interface Message {
   isLoading?: boolean;
   loadingPhase?: number;
   createdAt?: string;
+  currentVersion?: number;
+  totalVersions?: number;
+  versionHistory?: any[];
 }
 
 export interface Conversation {
@@ -37,6 +40,8 @@ interface ChatContextType {
   deleteConversation: (id: string) => Promise<void>;
   renameConversation: (id: string, newTitle: string) => Promise<void>;
   togglePinConversation: (id: string, is_pinned: boolean) => Promise<void>;
+  retryMessage: (messageId: string, conversationId: string) => Promise<void>;
+  updateMessageVersion: (messageId: string, version: number, content: string) => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -526,6 +531,81 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const retryMessage = async (messageId: string, conversationId: string) => {
+    if (!user) return;
+
+    try {
+      // Call the retry API with streaming
+      const response = await fetch('/api/retry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageId, conversationId })
+      });
+
+      if (!response.ok) {
+        throw new Error('Retry failed');
+      }
+
+      // Handle streaming response
+      const reader = response.body?.getReader();
+      if (!reader) return;
+
+      const decoder = new TextDecoder();
+      let streamedContent = '';
+
+      // Update the message to show loading state
+      setMessages(prev => 
+        prev.map(m => m.id === messageId 
+          ? { ...m, isLoading: true, content: '' } 
+          : m
+        )
+      );
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        streamedContent += chunk;
+
+        // Update the message content as it streams in
+        setMessages(prev => 
+          prev.map(m => m.id === messageId 
+            ? { ...m, isLoading: true, content: streamedContent } 
+            : m
+          )
+        );
+      }
+
+      // Final update when streaming is complete
+      setMessages(prev => 
+        prev.map(m => m.id === messageId 
+          ? { ...m, isLoading: false, content: streamedContent } 
+          : m
+        )
+      );
+
+    } catch (error) {
+      console.error('Error retrying message:', error);
+      // Reset loading state on error
+      setMessages(prev => 
+        prev.map(m => m.id === messageId 
+          ? { ...m, isLoading: false } 
+          : m
+        )
+      );
+    }
+  };
+
+  const updateMessageVersion = (messageId: string, version: number, content: string) => {
+    setMessages(prev => 
+      prev.map(m => m.id === messageId 
+        ? { ...m, content, currentVersion: version } 
+        : m
+      )
+    );
+  };
+
   return (
     <ChatContext.Provider value={{
       conversations,
@@ -541,7 +621,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       resetChat,
       deleteConversation,
       renameConversation,
-      togglePinConversation
+      togglePinConversation,
+      retryMessage,
+      updateMessageVersion
     }}>
       {children}
     </ChatContext.Provider>
@@ -565,7 +647,9 @@ export function useChat() {
       resetChat: () => {},
       deleteConversation: async () => {},
       renameConversation: async () => {},
-      togglePinConversation: async () => {}
+      togglePinConversation: async () => {},
+      retryMessage: async () => {},
+      updateMessageVersion: () => {}
     };
   }
   return context;

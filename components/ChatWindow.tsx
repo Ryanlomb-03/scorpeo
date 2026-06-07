@@ -61,7 +61,7 @@ function Typewriter({ text }: { text: string }) {
 export default function ChatWindow({ onLoginClick }: { onLoginClick?: () => void }) {
   const [greeting, setGreeting] = useState("");
   const [showChat, setShowChat] = useState(false);
-  const { messages, sendMessage, currentConversation, pendingConversationId, isSending, loading } = useChat();
+  const { messages, sendMessage, currentConversation, pendingConversationId, isSending, loading, retryMessage, updateMessageVersion } = useChat();
   const { user } = useAuth();
   const router = useRouter();
 
@@ -96,6 +96,16 @@ export default function ChatWindow({ onLoginClick }: { onLoginClick?: () => void
     await sendMessage(message);
   };
 
+  const handleRetry = async (messageId: string) => {
+    if (currentConversation) {
+      await retryMessage(messageId, currentConversation.id);
+    }
+  };
+
+  const handleVersionChange = (messageId: string, version: number, content: string) => {
+    updateMessageVersion(messageId, version, content);
+  };
+
   const showGreeting = !currentConversation && messages.length === 0;
 
   return (
@@ -126,6 +136,9 @@ export default function ChatWindow({ onLoginClick }: { onLoginClick?: () => void
                     loadingPhase={msg.loadingPhase}
                     messageId={msg.id}
                     userId={user?.uid}
+                    conversationId={currentConversation?.id}
+                    onRetry={handleRetry}
+                    onVersionChange={handleVersionChange}
                   />
                 ))}
               </div>

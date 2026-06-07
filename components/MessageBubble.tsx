@@ -36,6 +36,7 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
   const [totalVersions, setTotalVersions] = useState(1);
   const [isRetrying, setIsRetrying] = useState(false);
   const [versionHistory, setVersionHistory] = useState<any[]>([]);
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const headingIndexRef = useRef(0);
 
@@ -75,13 +76,30 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
     }
   };
 
-  // Fetch message versions for retry system
-  useEffect(() => {
-    if (messageId && conversationId && !isUser) {
-      fetchMessageVersions();
+  const handleRetry = async () => {
+    if (!messageId || !conversationId || isRetrying) return;
+    
+    setIsRetrying(true);
+    setShowVersionHistory(false);
+    setEditText(''); // Clear current content
+    try {
+      if (onRetry) {
+        await onRetry(messageId);
+        // After retry completes, show version history
+        setTimeout(() => {
+          setIsRetrying(false);
+          setShowVersionHistory(true);
+          fetchMessageVersions();
+        }, 1000);
+      }
+    } catch (error) {
+      console.error('Error during retry:', error);
+      setEditText(content); // Restore original content on error
+      setIsRetrying(false);
     }
-  }, [messageId, conversationId, isUser]);
+  };
 
+  // Fetch message versions for retry system
   const fetchMessageVersions = async () => {
     try {
       const response = await fetch(`/api/retry?messageId=${messageId}`);
@@ -99,29 +117,13 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
     }
   };
 
-  const handleRetry = async () => {
-    if (!messageId || !conversationId || isRetrying) return;
-    
-    setIsRetrying(true);
-    try {
-      if (onRetry) {
-        await onRetry(messageId);
-        // After retry completes, fetch the new version data
-        setTimeout(() => fetchMessageVersions(), 1000);
-      }
-    } catch (error) {
-      console.error('Error during retry:', error);
-    } finally {
-      setIsRetrying(false);
-    }
-  };
-
   const handleVersionChange = (newVersion: number) => {
     if (newVersion < 1 || newVersion > totalVersions) return;
     
     const version = versionHistory.find(v => v.version === newVersion);
     if (version && onVersionChange) {
       setCurrentVersion(newVersion);
+      setEditText(version.content); // Show selected version content
       onVersionChange(messageId || '', newVersion, version.content);
     }
   };
@@ -137,6 +139,13 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
       handleVersionChange(currentVersion + 1);
     }
   };
+
+  // Fetch message versions when version history should be shown
+  useEffect(() => {
+    if (messageId && conversationId && !isUser && !isLoading && showVersionHistory) {
+      fetchMessageVersions();
+    }
+  }, [messageId, conversationId, isUser, isLoading, showVersionHistory]);
 
   // Generate table of contents from markdown content
   const tocData = (() => {
@@ -571,17 +580,17 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
             onClick={handleRetry}
             disabled={isRetrying}
             className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            title={isRetrying ? "Generating..." : "Retry"}
+            title={isRetrying ? "Regenerating..." : "Regenerate"}
           >
             {isRetrying ? (
               <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full" />
             ) : (
-              <img src="/icons/retry.svg" alt="Retry" width="20" height="20" />
+              <img src="/icons/retry.svg" alt="Regenerate" width="20" height="20" />
             )}
           </button>
         </div>
-        {/* Version Navigation */}
-        {totalVersions > 1 && (
+        {/* Version Navigation - only show after completion and when there are multiple versions */}
+        {showVersionHistory && !isRetrying && totalVersions > 1 && (
           <div className="flex items-center gap-2 mt-2 text-sm text-neutral-400">
             <button
               onClick={goToPreviousVersion}

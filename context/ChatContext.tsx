@@ -535,6 +535,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     if (!user) return;
 
     try {
+      // Set the message to loading state with empty content
+      setMessages(prev => 
+        prev.map(m => m.id === messageId 
+          ? { ...m, isLoading: true, content: '' } 
+          : m
+        )
+      );
+
       // Call the retry API with streaming
       const response = await fetch('/api/retry', {
         method: 'POST',
@@ -552,14 +560,6 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
       const decoder = new TextDecoder();
       let streamedContent = '';
-
-      // Update the message to show loading state
-      setMessages(prev => 
-        prev.map(m => m.id === messageId 
-          ? { ...m, isLoading: true, content: '' } 
-          : m
-        )
-      );
 
       while (true) {
         const { done, value } = await reader.read();
@@ -587,7 +587,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
     } catch (error) {
       console.error('Error retrying message:', error);
-      // Reset loading state on error
+      // Reset to original content on error
       setMessages(prev => 
         prev.map(m => m.id === messageId 
           ? { ...m, isLoading: false } 
@@ -598,6 +598,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   };
 
   const updateMessageVersion = (messageId: string, version: number, content: string) => {
+    // Update message content locally for version navigation
     setMessages(prev => 
       prev.map(m => m.id === messageId 
         ? { ...m, content, currentVersion: version } 

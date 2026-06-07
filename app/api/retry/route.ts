@@ -29,23 +29,8 @@ export async function POST(req: Request) {
       .order('created_at', { ascending: true })
       .lt('created_at', originalMessage.created_at);
 
-    // Get message versions to know the retry count
-    const { data: versions } = await supabase
-      .from('message_versions')
-      .select('*')
-      .eq('message_id', messageId)
-      .order('version_number', { ascending: false });
-
-    const retryCount = versions ? versions.length : 0;
-    const currentVersion = (retryCount + 1);
-
-    // Add randomness to parameters for natural variation
-    const baseTemperature = 0.7;
-    const baseTopP = 0.95;
-    const randomTemp = (Math.random() * 0.2 - 0.1); // -0.1 to +0.1
-    const randomTopP = (Math.random() * 0.1 - 0.05); // -0.05 to +0.05
-
-    const diversityInstruction = `IMPORTANT: This is retry #${currentVersion} of the response. Generate a SUBSTANTIALLY different answer:
+    // Diversity instruction for different response
+    const diversityInstruction = `IMPORTANT: Generate a SUBSTANTIALLY different answer from your previous response:
 
 1. Use a COMPLETELY DIFFERENT organization or structure
 2. Start with a different opening sentence or phrase
@@ -53,9 +38,7 @@ export async function POST(req: Request) {
 4. Consider different perspectives or angles
 5. Avoid repeating the same bullet points or numbered list structure
 6. Try a different tone or style variation
-7. Make the content fresh while maintaining accuracy
-
-Previous response was version ${retryCount}. The user wants to see something new and different.`;
+7. Make the content fresh while maintaining accuracy`;
 
     // Use AI Router for model selection
     const routingResult = await modelRouter.route(originalMessage.content);
@@ -92,10 +75,10 @@ ${diversityInstruction}`;
       { role: "user", content: originalMessage.content }
     ];
 
-    // Randomized parameters for diversity
-    const retryParameters = {
-      temperature: Math.max(0.1, Math.min(1.0, baseTemperature + randomTemp)),
-      top_p: Math.max(0.1, Math.min(1.0, baseTopP + randomTopP)),
+    // Standard chat parameters
+    const chatParameters = {
+      temperature: 0.7,
+      top_p: 0.95,
       max_tokens: 8192,
       stream: true
     };
@@ -115,7 +98,7 @@ ${diversityInstruction}`;
         body: JSON.stringify({
           model: "minimaxai/minimax-m2.7",
           messages: chatMessages,
-          ...retryParameters
+          ...chatParameters
         }),
       });
 
@@ -124,7 +107,7 @@ ${diversityInstruction}`;
       if (res.ok) {
         responseSuccess = true;
         
-        // Stream response and collect full content
+        // Stream response
         const encoder = new TextEncoder();
         const decoder = new TextDecoder();
         const stream = new ReadableStream({
@@ -140,15 +123,12 @@ ${diversityInstruction}`;
               while (true) {
                 const { done, value } = await reader.read();
                 if (done) {
-                  // Store the new version in database
+                  // Update the message in database with new content
                   if (fullResponse) {
-                    await supabase.rpc('add_message_version', {
-                      p_message_id: messageId,
-                      p_content: fullResponse,
-                      p_model_id: model.id,
-                      p_temperature: retryParameters.temperature,
-                      p_top_p: retryParameters.top_p
-                    });
+                    await supabase
+                      .from('messages')
+                      .update({ content: fullResponse })
+                      .eq('id', messageId);
                   }
                   
                   // Update health metrics
@@ -197,10 +177,7 @@ ${diversityInstruction}`;
             "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
             "X-Model": model.id,
-            "X-Intent": intent.type,
-            "X-Retry-Count": currentVersion.toString(),
-            "X-Version": currentVersion.toString(),
-            "X-Total-Versions": (currentVersion).toString()
+            "X-Intent": intent.type
           },
         });
       } else {

@@ -45,26 +45,26 @@ BEGIN
       m.content
     ) as content,
     COALESCE(
-      (SELECT COUNT(*) FROM message_versions WHERE message_id = m.id) + 1,
+      (SELECT COUNT(*) FROM message_versions mv WHERE mv.message_id = m.id) + 1,
       1
     ) as total_versions,
     COALESCE(
-      (SELECT MAX(version_number) FROM message_versions WHERE message_id = m.id) + 1,
+      (SELECT MAX(mv.version_number) FROM message_versions mv WHERE mv.message_id = m.id) + 1,
       1
     ) as current_version,
     COALESCE(
       (
         SELECT jsonb_agg(
           jsonb_build_object(
-            'version', version_number,
-            'content', content,
-            'created_at', created_at,
-            'model_id', model_id
+            'version', mv.version_number,
+            'content', mv.content,
+            'created_at', mv.created_at,
+            'model_id', mv.model_id
           )
-          ORDER BY version_number DESC
+          ORDER BY mv.version_number DESC
         )
-        FROM message_versions 
-        WHERE message_id = m.id
+        FROM message_versions mv
+        WHERE mv.message_id = m.id
       ),
       jsonb_build_object(
         'version', 1,
@@ -90,9 +90,9 @@ DECLARE
   v_new_version INT;
 BEGIN
   -- Get the current highest version number
-  SELECT COALESCE(MAX(version_number), 0) + 1 INTO v_new_version
-  FROM message_versions
-  WHERE message_id = p_message_id;
+  SELECT COALESCE(MAX(mv.version_number), 0) + 1 INTO v_new_version
+  FROM message_versions mv
+  WHERE mv.message_id = p_message_id;
   
   -- Insert the new version
   INSERT INTO message_versions (
@@ -110,7 +110,7 @@ BEGIN
     m.conversation_id,
     v_new_version,
     p_content,
-    (SELECT COUNT(*) FROM message_versions WHERE message_id = p_message_id),
+    (SELECT COUNT(*) FROM message_versions mv WHERE mv.message_id = p_message_id),
     p_temperature,
     p_top_p,
     p_model_id

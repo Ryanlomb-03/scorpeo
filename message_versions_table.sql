@@ -23,54 +23,58 @@ CREATE INDEX IF NOT EXISTS idx_message_versions_created_at ON message_versions(c
 
 -- Function to get message with version navigation
 CREATE OR REPLACE FUNCTION get_message_with_versions(p_message_id VARCHAR)
-RETURNS JSONB AS $$
-DECLARE
-  result JSONB;
+RETURNS TABLE (
+  id TEXT,
+  content TEXT,
+  total_versions INT,
+  current_version INT,
+  all_versions JSONB
+) AS $$
 BEGIN
-  SELECT jsonb_build_object(
-    'id', m.id::TEXT,
-    'content', COALESCE(
-      (SELECT mv.content 
-       FROM message_versions mv 
-       WHERE mv.message_id = m.id 
-       ORDER BY mv.version_number DESC 
-       LIMIT 1),
+  RETURN QUERY
+  SELECT 
+    m.id,
+    COALESCE(
+      (
+        SELECT mv.content 
+        FROM message_versions mv 
+        WHERE mv.message_id = m.id 
+        ORDER BY mv.version_number DESC 
+        LIMIT 1
+      ),
       m.content
-    ),
-    'total_versions', COALESCE(
+    ) as content,
+    COALESCE(
       (SELECT COUNT(*) FROM message_versions mv WHERE mv.message_id = m.id) + 1,
       1
-    ),
-    'current_version', COALESCE(
+    ) as total_versions,
+    COALESCE(
       (SELECT MAX(mv.version_number) FROM message_versions mv WHERE mv.message_id = m.id) + 1,
       1
-    ),
-    'all_versions', COALESCE(
-      (SELECT jsonb_agg(
-        jsonb_build_object(
-          'version', mv.version_number,
-          'content', mv.content,
-          'created_at', mv.created_at,
-          'model_id', mv.model_id
+    ) as current_version,
+    COALESCE(
+      (
+        SELECT jsonb_agg(
+          jsonb_build_object(
+            'version', mv.version_number,
+            'content', mv.content,
+            'created_at', mv.created_at,
+            'model_id', mv.model_id
+          )
+          ORDER BY mv.version_number DESC
         )
-        ORDER BY mv.version_number DESC
+        FROM message_versions mv
+        WHERE mv.message_id = m.id
+      ),
+      jsonb_build_object(
+        'version', 1,
+        'content', m.content,
+        'created_at', m.created_at,
+        'model_id', NULL
       )
-      FROM message_versions mv
-      WHERE mv.message_id = m.id),
-      jsonb_build_array(
-        jsonb_build_object(
-          'version', 1,
-          'content', m.content,
-          'created_at', m.created_at,
-          'model_id', NULL
-        )
-      )
-    )
-  ) INTO result
+    ) as all_versions
   FROM messages m
   WHERE m.id = p_message_id;
-  
-  RETURN result;
 END;
 $$ LANGUAGE plpgsql;
 

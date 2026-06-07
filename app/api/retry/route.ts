@@ -234,7 +234,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "messageId required" }, { status: 400 });
     }
 
-    // Get message with all versions (returns JSONB object)
+    // Get message with all versions (returns TABLE format)
     const { data, error } = await supabase.rpc('get_message_with_versions', {
       p_message_id: messageId
     });
@@ -244,7 +244,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Return the JSONB object directly
+    // Return the table data (should be array of objects)
     return NextResponse.json(data);
   } catch (error) {
     console.error("GET /api/retry error:", error);

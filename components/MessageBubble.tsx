@@ -87,11 +87,11 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
       const response = await fetch(`/api/retry?messageId=${messageId}`);
       if (response.ok) {
         const data = await response.json();
-        if (data && data.length > 0) {
-          const messageData = data[0];
-          setTotalVersions(messageData.total_versions || 1);
-          setCurrentVersion(messageData.current_version || 1);
-          setVersionHistory(messageData.all_versions || []);
+        if (data && typeof data === 'object') {
+          // Handle JSONB object return format
+          setTotalVersions(data.total_versions || 1);
+          setCurrentVersion(data.current_version || 1);
+          setVersionHistory(data.all_versions || []);
         }
       }
     } catch (error) {

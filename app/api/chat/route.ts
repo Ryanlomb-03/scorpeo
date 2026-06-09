@@ -3,6 +3,9 @@ import supabase from "@/lib/db";
 import * as zlib from "zlib";
 import { modelRouter } from "@/lib/modelRouter";
 
+const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY;
+const NVIDIA_BASE_URL = process.env.NVIDIA_BASE_URL || "https://integrate.api.nvidia.com/v1";
+
 // Generate smart, contextual responses if the AI service is completely unreachable
 function getFallbackResponse(message: string): string {
   const msg = message.toLowerCase().trim();
@@ -131,7 +134,7 @@ ALWAYS use LaTeX with $ delimiters for mathematical symbols in tables to ensure 
           "Authorization": `Bearer ${apiKey}`
         },
         body: JSON.stringify({
-          model: intent.type === 'coding' ? "minimaxai/minimax-m2.7" : "minimaxai/minimax-m2.7", // Can be made dynamic based on model registry
+          model: intent.type === 'generate_code' ? "minimaxai/minimax-m2.7" : "minimaxai/minimax-m2.7", // Can be made dynamic based on model registry
           messages: chatMessages,
           ...parameters
         }),

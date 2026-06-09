@@ -18,7 +18,17 @@ const imageFormats = [
   "ico", "icns", "png", "jpg", "jpeg", "webp", "bmp", "cur", "ani", "gif", "apng", "tif", "tiff", "heif", "heic", "avif", "jxl", "psd", "xcf"
 ];
 
-export default function ChatInput({ onSend, onLoginClick, isAIThinking }: { onSend?: (message: string) => void; onLoginClick?: () => void; isAIThinking?: boolean }) {
+export default function ChatInput({ 
+  onSend, 
+  onLoginClick, 
+  isAIThinking,
+  position = "bottom"
+}: { 
+  onSend?: (message: string) => void; 
+  onLoginClick?: () => void; 
+  isAIThinking?: boolean;
+  position?: "bottom" | "center";
+}) {
   const [input, setInput] = useState("");
   const [showPopup, setShowPopup] = useState(false);
   const [showToolsDropdown, setShowToolsDropdown] = useState(false);
@@ -159,7 +169,7 @@ export default function ChatInput({ onSend, onLoginClick, isAIThinking }: { onSe
   };
 
   return (
-    <div className="px-4 py-2 relative">
+    <div className="px-2 sm:px-4 py-2 relative w-full">
       {/* AI Thinking Dots — floats above the input pill */}
       <AnimatePresence>
         {isAIThinking && (
@@ -205,9 +215,9 @@ export default function ChatInput({ onSend, onLoginClick, isAIThinking }: { onSe
       <motion.form 
         layout
         onSubmit={handleSubmit} 
-        className="max-w-3xl mx-auto"
+        className="max-w-3xl mx-auto w-full"
       >
-        <motion.div layout className="bg-neutral-800/80 backdrop-blur-sm rounded-3xl px-4 py-3 border border-neutral-700/50 shadow-lg">
+        <motion.div layout className="bg-neutral-800/80 backdrop-blur-sm rounded-3xl px-3 sm:px-4 py-2 sm:py-3 border border-neutral-700/50 shadow-lg">
           
           {/* File Previews */}
           {attachedFiles.length > 0 && (
@@ -301,11 +311,11 @@ export default function ChatInput({ onSend, onLoginClick, isAIThinking }: { onSe
               
               {showPopup && (
                 <motion.div 
-                  initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                  initial={{ opacity: 0, y: position === 'bottom' ? 10 : -10, scale: 0.95 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                  exit={{ opacity: 0, y: position === 'bottom' ? 10 : -10, scale: 0.95 }}
                   transition={{ duration: 0.15 }}
-                  className="absolute top-full mt-2 left-0 bg-[#2f2f2f] rounded-2xl shadow-xl border border-neutral-700/50 p-2 w-[220px] z-50" 
+                  className={`absolute ${position === 'bottom' ? 'bottom-full mb-2' : 'top-full mt-2'} left-0 bg-[#2f2f2f] rounded-2xl shadow-xl border border-neutral-700/50 p-2 w-[220px] z-50`} 
                   onClick={(e) => e.stopPropagation()}
                 >
                   <div className="flex flex-col">
@@ -426,11 +436,11 @@ export default function ChatInput({ onSend, onLoginClick, isAIThinking }: { onSe
                 </button>
                 {showToolsDropdown && (
                   <motion.div 
-                    initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                    initial={{ opacity: 0, y: position === 'bottom' ? 10 : -10, scale: 0.95 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                    exit={{ opacity: 0, y: position === 'bottom' ? 10 : -10, scale: 0.95 }}
                     transition={{ duration: 0.15 }}
-                    className="absolute top-10 right-0 bg-neutral-800 rounded-2xl shadow-xl border border-neutral-700 p-3 w-64 z-50" 
+                    className={`absolute ${position === 'bottom' ? 'bottom-full mb-2' : 'top-10'} right-0 bg-neutral-800 rounded-2xl shadow-xl border border-neutral-700 p-3 w-64 z-50`} 
                     onClick={(e) => e.stopPropagation()}
                   >
                     <div className="space-y-2">

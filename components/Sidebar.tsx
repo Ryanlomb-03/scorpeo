@@ -6,13 +6,14 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { useChat } from "@/context/ChatContext";
+import { useSidebar } from "@/context/SidebarContext";
 
 interface SidebarProps {
   onLoginClick: () => void;
 }
 
 export default function Sidebar({ onLoginClick }: SidebarProps) {
-  const [isOpen, setIsOpen] = useState(true);
+  const { isSidebarOpen: isOpen, setIsSidebarOpen, isMobile, closeSidebar } = useSidebar();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [editingConvId, setEditingConvId] = useState<string | null>(null);
@@ -213,10 +214,12 @@ export default function Sidebar({ onLoginClick }: SidebarProps) {
     resetChat();
     // Use replace to avoid history issues
     router.replace('/');
+    closeSidebar();
   };
 
   const handleConversationClick = (id: string) => {
     router.push(`/chat/${id}`);
+    closeSidebar();
   };
 
   const handleDeleteConversation = (e: React.MouseEvent, id: string) => {
@@ -236,12 +239,17 @@ export default function Sidebar({ onLoginClick }: SidebarProps) {
   return (
     <motion.div
       initial={false}
-      animate={{ width: isOpen ? 280 : 48 }}
+      animate={{ 
+        width: isMobile ? 280 : (isOpen ? 280 : 48),
+        x: isMobile && !isOpen ? -280 : 0
+      }}
       transition={{ duration: 0.2, ease: "easeInOut" }}
-      className="bg-black flex flex-col border-r border-neutral-800 h-full"
+      className={`bg-black flex flex-col border-r border-neutral-800 h-full overflow-hidden ${
+        isMobile ? 'fixed inset-y-0 left-0 z-50' : 'relative'
+      }`}
     >
       <AnimatePresence mode="wait">
-        {isOpen ? (
+        {(isOpen || isMobile) ? (
           <motion.div
             key="open"
             initial={{ opacity: 0 }}
@@ -262,11 +270,15 @@ export default function Sidebar({ onLoginClick }: SidebarProps) {
                   />
                 </div>
                 <button
-                  onClick={() => setIsOpen(false)}
-                  className="ml-auto w-6 h-6 flex items-center justify-center hover:bg-neutral-800 rounded transition-colors"
+                  onClick={() => setIsSidebarOpen(false)}
+                  className="ml-auto w-8 h-8 flex items-center justify-center hover:bg-neutral-800 rounded transition-colors"
                   title="Close sidebar"
                 >
-                  <Image src="/close.svg" alt="Close" width={16} height={16} />
+                  {isMobile ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                  ) : (
+                    <Image src="/close.svg" alt="Close" width={16} height={16} />
+                  )}
                 </button>
               </div>
 
@@ -537,7 +549,7 @@ export default function Sidebar({ onLoginClick }: SidebarProps) {
           >
             <div className="flex flex-col items-center">
               <button
-                onClick={() => setIsOpen(true)}
+                onClick={() => setIsSidebarOpen(true)}
                 className="w-8 h-8 relative flex items-center justify-center hover:bg-neutral-800 rounded transition-colors group"
                 title="Open sidebar"
               >
@@ -559,7 +571,7 @@ export default function Sidebar({ onLoginClick }: SidebarProps) {
               </button>
               <button
                 onClick={() => {
-                  setIsOpen(true);
+                  setIsSidebarOpen(true);
                   if (pathname !== '/search') {
                     router.push('/search');
                   }

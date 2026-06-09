@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useChat } from "@/context/ChatContext";
 import { useAuth } from "@/context/AuthContext";
+import { useSidebar } from "@/context/SidebarContext";
 import MessageBubble from "@/components/MessageBubble";
 import ChatInput from "@/components/ChatInput";
 import Sidebar from "@/components/Sidebar";
@@ -17,6 +18,7 @@ export default function ChatPage() {
   const [showLogin, setShowLogin] = useState(false);
   const { selectConversation, loading, messages, sendMessage, currentConversation, resetChat, isSending } = useChat();
   const { user } = useAuth();
+  const { isMobile, setIsSidebarOpen } = useSidebar();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const loadedConversationRef = useRef<string | null>(null);
 
@@ -77,12 +79,20 @@ export default function ChatPage() {
 
   return (
     <>
-      <div className="p-4">
+      <div className="p-3 sm:p-4 flex items-center gap-3">
+        {isMobile && (
+          <button 
+            onClick={() => setIsSidebarOpen(true)}
+            className="p-1.5 text-gray-400 hover:text-white rounded-md hover:bg-neutral-800 transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+          </button>
+        )}
         <h1 className="text-white text-lg font-semibold" style={{ fontFamily: "var(--font-inter), system-ui, sans-serif" }}>
           Scorpio
         </h1>
       </div>
-      <div className="flex-1 flex flex-col min-h-0">
+      <div className="flex-1 flex flex-col min-h-0 w-full max-w-full">
         {loading ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="spinner-loader">
@@ -92,9 +102,9 @@ export default function ChatPage() {
             </div>
           </div>
         ) : messages.length > 0 ? (
-          <div className="flex-1 overflow-y-auto px-6 pt-4 pb-24 scrollbar-thin scrollbar-thumb-neutral-600 scrollbar-track-transparent relative">
+          <div className="flex-1 overflow-y-auto px-3 sm:px-6 pt-4 pb-24 scrollbar-thin scrollbar-thumb-neutral-600 scrollbar-track-transparent relative w-full">
             <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-neutral-900 to-transparent pointer-events-none z-10" />
-            <div className="max-w-3xl mx-auto space-y-4">
+            <div className="max-w-3xl mx-auto space-y-4 w-full">
               {messages.map((msg) => (
                 <MessageBubble 
                   key={msg.id}
@@ -112,8 +122,8 @@ export default function ChatPage() {
         ) : (
           <div className="flex-1" />
         )}
-        <div className="w-full max-w-3xl mx-auto px-6 pb-4 bg-neutral-900 relative z-20">
-          <ChatInput onSend={handleSendMessage} isAIThinking={isSending} />
+        <div className="w-full max-w-3xl mx-auto px-0 sm:px-6 pb-4 bg-neutral-900 relative z-20">
+          <ChatInput onSend={handleSendMessage} isAIThinking={isSending} position="bottom" />
         </div>
       </div>
       <div className="p-4 text-center border-t border-neutral-800">

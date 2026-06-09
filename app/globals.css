@@ -360,3 +360,44 @@ html {
 * {
   scroll-behavior: smooth;
 }
+
+/* Mobile Math Equations & General Media Queries */
+.katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+.katex-display > .katex {
+  white-space: nowrap;
+}
+
+.code-block {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+@media (max-width: 768px) {
+  .katex {
+    font-size: 0.85em !important;
+  }
+  
+  .katex-display {
+    margin: 0.5em 0 !important;
+  }
+  
+  .katex-display::-webkit-scrollbar {
+    height: 4px;
+  }
+  
+  body {
+    overflow-x: hidden;
+  }
+}
+
+@media (max-width: 480px) {
+  .katex {
+    font-size: 0.8em !important;
+  }
+}

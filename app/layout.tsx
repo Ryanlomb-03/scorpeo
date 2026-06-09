@@ -1,8 +1,9 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import "katex/dist/katex.min.css";
 import { AuthProvider } from "@/context/AuthContext";
 import { ChatProvider } from "@/context/ChatContext";
+import { SidebarProvider } from "@/context/SidebarContext";
 import LayoutShell from "@/components/LayoutShell";
 
 export const metadata: Metadata = {
@@ -11,6 +12,12 @@ export const metadata: Metadata = {
   icons: {
     icon: "/logo.png",
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
 };
 
 export default function RootLayout({
@@ -26,9 +33,11 @@ export default function RootLayout({
       <body className="bg-neutral-900 text-white antialiased font-medium">
         <AuthProvider>
           <ChatProvider>
-            <LayoutShell>
-              {children}
-            </LayoutShell>
+            <SidebarProvider>
+              <LayoutShell>
+                {children}
+              </LayoutShell>
+            </SidebarProvider>
           </ChatProvider>
         </AuthProvider>
       </body>

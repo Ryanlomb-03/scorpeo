@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import LibraryPopup from "@/components/LibraryPopup";
 import { useAuth } from "@/context/AuthContext";
+import { useSidebar } from "@/context/SidebarContext";
 
 function LibraryContent() {
   const router = useRouter();
@@ -40,6 +41,7 @@ function LibraryContent() {
   const [isAiInputScrolledBottom, setIsAiInputScrolledBottom] = useState(false);
   const noteInputRef = useRef<HTMLInputElement>(null);
   const { user } = useAuth();
+  const { isMobile, setIsSidebarOpen } = useSidebar();
 
   const handleAiWrite = async () => {
     if (!aiInput.trim() || isAiProcessing || showAiReview) return;
@@ -678,9 +680,27 @@ function LibraryContent() {
             </div>
           </div>
         ) : (
-          <div className="max-w-4xl mx-auto w-full">
-          {/* Header */}
-          <div className="flex flex-col mb-8">
+          <div className="w-full h-full flex flex-col">
+            {/* Top Navigation Bar */}
+            <div className="p-3 sm:p-4 flex items-center gap-3 w-full">
+              {isMobile && (
+                <button 
+                  onClick={() => setIsSidebarOpen(true)}
+                  className="p-1.5 text-gray-400 hover:text-white rounded-md hover:bg-neutral-800 transition-colors"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+                </button>
+              )}
+              {isMobile && (
+                <h1 className="text-white text-lg font-semibold" style={{ fontFamily: "var(--font-inter), system-ui, sans-serif" }}>
+                  Scorpio
+                </h1>
+              )}
+            </div>
+
+            <div className="max-w-4xl mx-auto w-full px-4 sm:px-0">
+            {/* Header */}
+            <div className="flex flex-col mb-8 mt-4 sm:mt-0">
             <div className="flex items-center justify-between w-full mb-4">
               <h1 className="text-white text-3xl font-light">Library</h1>
               <div className="flex items-center gap-4">
@@ -1102,8 +1122,9 @@ function LibraryContent() {
             </div>
           )}
         </div>
-        )}
       </div>
+    )}
+  </div>
 
       <LibraryPopup isOpen={showPopup} onClose={handlePopupClose} />
 

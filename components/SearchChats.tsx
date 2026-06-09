@@ -4,6 +4,7 @@ import { useChat } from "@/context/ChatContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
+import { useSidebar } from "@/context/SidebarContext";
 
 export default function SearchChats({ onClose }: { onClose?: () => void }) {
   const [searchQuery, setSearchQuery] = useState("");
@@ -11,6 +12,7 @@ export default function SearchChats({ onClose }: { onClose?: () => void }) {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const { conversations } = useChat();
   const { user } = useAuth();
+  const { isMobile, setIsSidebarOpen } = useSidebar();
   const router = useRouter();
 
   // Helper function to format date
@@ -84,7 +86,15 @@ export default function SearchChats({ onClose }: { onClose?: () => void }) {
 
   return (
     <div className="flex flex-col flex-1 bg-neutral-900 overflow-hidden">
-      <div className="p-4 border-b border-neutral-800">
+      <div className="p-3 sm:p-4 flex items-center gap-3 border-b border-neutral-800">
+        {isMobile && (
+          <button 
+            onClick={() => setIsSidebarOpen(true)}
+            className="p-1.5 text-gray-400 hover:text-white rounded-md hover:bg-neutral-800 transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+          </button>
+        )}
         <h1 className="text-white text-lg font-semibold" style={{ fontFamily: "var(--font-inter), system-ui, sans-serif" }}>
           Scorpio
         </h1>

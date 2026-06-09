@@ -417,14 +417,14 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
   if (isUser) {
     return (
       <div className="flex justify-end mb-3">
-        <div className="flex flex-col items-end max-w-[70%] group">
+        <div className="flex flex-col items-end max-w-[85%] sm:max-w-[70%] group">
           <div className={`
             outline-none
-            bg-[#2f2f2f] text-white ${isShort ? 'rounded-full px-5 py-3 text-base' : 'rounded-2xl text-sm px-4 py-3'}
+            bg-[#2f2f2f] text-white ${isShort ? 'rounded-full px-4 sm:px-5 py-2.5 sm:py-3 text-base' : 'rounded-2xl text-sm px-3 sm:px-4 py-2.5 sm:py-3'}
             leading-relaxed
             relative
           `}>
-            <div style={{ whiteSpace: 'pre-wrap' }}>
+            <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
               {getTruncatedText()}
             </div>
             {isLong && !expanded && (
@@ -516,13 +516,13 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
           </div>
         )}
 
-        <div ref={contentRef} className="text-gray-200 text-[15px] leading-[1.7] relative">
+        <div ref={contentRef} className="text-gray-200 text-[15px] leading-[1.7] relative break-words">
           {isUser ? (
-            <div style={{ whiteSpace: 'pre-wrap' }}>
+            <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
               {getTruncatedText()}
             </div>
           ) : (
-            <div style={{ whiteSpace: 'pre-wrap' }}>
+            <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
               {renderContent()}
             </div>
           )}

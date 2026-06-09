@@ -21,6 +21,7 @@
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
+    "shiki": "^4.2.0",
     "uuid": "^14.0.0"
   },
   "devDependencies": {

@@ -13,7 +13,7 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ onLoginClick }: SidebarProps) {
-  const { isSidebarOpen: isOpen, setIsSidebarOpen, isMobile, closeSidebar } = useSidebar();
+  const { isSidebarOpen: isOpen, setIsSidebarOpen, isMobile, hydrated, closeSidebar } = useSidebar();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [editingConvId, setEditingConvId] = useState<string | null>(null);
@@ -235,6 +235,8 @@ export default function Sidebar({ onLoginClick }: SidebarProps) {
     setDeleteConfirm(null);
     router.replace('/');
   };
+
+  if (!hydrated) return null;
 
   return (
     <motion.div

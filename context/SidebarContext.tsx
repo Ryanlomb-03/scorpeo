@@ -6,28 +6,33 @@ interface SidebarContextType {
   isSidebarOpen: boolean;
   setIsSidebarOpen: (isOpen: boolean) => void;
   isMobile: boolean;
+  hydrated: boolean;
   closeSidebar: () => void;
 }
 
 const SidebarContext = createContext<SidebarContextType | undefined>(undefined);
 
 export function SidebarProvider({ children }: { children: React.ReactNode }) {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  // Start closed to prevent flash — will open on desktop after hydration
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
+    const mobile = window.innerWidth <= 768;
+    setIsMobile(mobile);
+    setIsSidebarOpen(!mobile); // Open on desktop, closed on mobile
+    setHydrated(true);
+
     const handleResize = () => {
-      const mobile = window.innerWidth <= 768;
-      setIsMobile(mobile);
-      if (mobile) {
-        setIsSidebarOpen(false); // Default closed on mobile
+      const nowMobile = window.innerWidth <= 768;
+      setIsMobile(nowMobile);
+      if (nowMobile) {
+        setIsSidebarOpen(false);
       } else {
-        setIsSidebarOpen(true); // Default open on desktop
+        setIsSidebarOpen(true);
       }
     };
-
-    // Initial check
-    handleResize();
 
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
@@ -40,7 +45,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <SidebarContext.Provider value={{ isSidebarOpen, setIsSidebarOpen, isMobile, closeSidebar }}>
+    <SidebarContext.Provider value={{ isSidebarOpen, setIsSidebarOpen, isMobile, hydrated, closeSidebar }}>
       {children}
     </SidebarContext.Provider>
   );

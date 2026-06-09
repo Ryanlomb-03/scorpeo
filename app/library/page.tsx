@@ -682,7 +682,7 @@ function LibraryContent() {
         ) : (
           <div className="w-full h-full flex flex-col">
             {/* Top Navigation Bar */}
-            <div className="p-3 sm:p-4 flex items-center gap-3 w-full">
+            <div className="p-3 sm:p-4 flex items-center gap-3 w-full shadow-[0_4px_20px_-10px_rgba(0,0,0,0.5)] z-20 relative bg-black">
               {isMobile && (
                 <button 
                   onClick={() => setIsSidebarOpen(true)}

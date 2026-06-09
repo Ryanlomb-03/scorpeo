@@ -112,11 +112,12 @@ export default function ChatWindow({ onLoginClick }: { onLoginClick?: () => void
 
   return (
     <div className="flex flex-col flex-1 bg-neutral-900 w-full max-w-full">
-      <div className="p-3 sm:p-4 flex items-center gap-3">
+      <div className="p-3 sm:p-4 flex items-center gap-3 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.5)] z-20 relative bg-neutral-900">
         {isMobile && (
           <button 
             onClick={() => setIsSidebarOpen(true)}
-            className="p-1.5 text-gray-400 hover:text-white rounded-md hover:bg-neutral-800 transition-colors"
+            disabled={loading}
+            className={`p-1.5 text-gray-400 hover:text-white rounded-md hover:bg-neutral-800 transition-colors ${loading ? 'opacity-50 pointer-events-none' : ''}`}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
           </button>

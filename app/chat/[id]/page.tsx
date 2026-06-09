@@ -43,19 +43,24 @@ export default function ChatPage() {
     }
   }, [mounted, params.id, router, resetChat]);
 
-  // Only load conversation once when id changes
+  // Only load conversation once when id changes, OR when user becomes available
   useEffect(() => {
     const id = params.id as string;
-    if (mounted && id && id !== 'favicon.ico' && id !== loadedConversationRef.current) {
-      // Skip if already viewing this conversation with messages
-      if (currentConversation?.id === id && messages.length > 0) {
-        loadedConversationRef.current = id;
-        return;
-      }
-      loadedConversationRef.current = id;
-      selectConversation(id);
+    if (!mounted || !id || id === 'favicon.ico') return;
+    if (!user) {
+      // User not loaded yet — clear ref so we retry when user arrives
+      loadedConversationRef.current = null;
+      return;
     }
-  }, [params.id, mounted]);
+    if (id === loadedConversationRef.current) return;
+    // Skip if already viewing this conversation with messages
+    if (currentConversation?.id === id && messages.length > 0) {
+      loadedConversationRef.current = id;
+      return;
+    }
+    loadedConversationRef.current = id;
+    selectConversation(id);
+  }, [params.id, mounted, user]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -65,25 +70,14 @@ export default function ChatPage() {
     await sendMessage(message);
   };
 
-  if (!mounted) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="spinner-loader">
-          {Array.from({ length: 12 }).map((_, i) => (
-            <div key={i} />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <>
-      <div className="p-3 sm:p-4 flex items-center gap-3">
+      <div className="p-3 sm:p-4 flex items-center gap-3 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.5)] z-20 relative bg-neutral-900">
         {isMobile && (
           <button 
             onClick={() => setIsSidebarOpen(true)}
-            className="p-1.5 text-gray-400 hover:text-white rounded-md hover:bg-neutral-800 transition-colors"
+            disabled={!mounted || loading}
+            className={`p-1.5 text-gray-400 hover:text-white rounded-md hover:bg-neutral-800 transition-colors ${(!mounted || loading) ? 'opacity-50 pointer-events-none' : ''}`}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
           </button>
@@ -93,7 +87,7 @@ export default function ChatPage() {
         </h1>
       </div>
       <div className="flex-1 flex flex-col min-h-0 w-full max-w-full">
-        {loading ? (
+        {(!mounted || loading) ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="spinner-loader">
               {Array.from({ length: 12 }).map((_, i) => (

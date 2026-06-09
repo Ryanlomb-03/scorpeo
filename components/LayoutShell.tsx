@@ -8,13 +8,13 @@ import { AnimatePresence, motion } from "framer-motion";
 
 export default function LayoutShell({ children }: { children: React.ReactNode }) {
   const { showLogin, setShowLogin } = useAuth();
-  const { isMobile, isSidebarOpen, setIsSidebarOpen } = useSidebar();
+  const { isMobile, isSidebarOpen, setIsSidebarOpen, hydrated } = useSidebar();
 
   return (
     <div className="flex h-[100dvh] overflow-hidden relative">
       {/* Mobile Backdrop */}
       <AnimatePresence>
-        {isMobile && isSidebarOpen && (
+        {hydrated && isMobile && isSidebarOpen && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}

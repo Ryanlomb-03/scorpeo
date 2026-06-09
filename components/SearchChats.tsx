@@ -86,7 +86,7 @@ export default function SearchChats({ onClose }: { onClose?: () => void }) {
 
   return (
     <div className="flex flex-col flex-1 bg-neutral-900 overflow-hidden">
-      <div className="p-3 sm:p-4 flex items-center gap-3 border-b border-neutral-800">
+      <div className="p-3 sm:p-4 flex items-center gap-3 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.5)] z-20 relative bg-neutral-900">
         {isMobile && (
           <button 
             onClick={() => setIsSidebarOpen(true)}

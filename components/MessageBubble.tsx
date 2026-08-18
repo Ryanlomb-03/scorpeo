@@ -9,6 +9,128 @@ import 'katex/dist/katex.min.css';
 
 const LIMIT = 150;
 
+interface WikiCardData {
+  title: string;
+  imageUrl?: string;
+  description: string;
+  extract: string;
+  wikiUrl?: string;
+}
+
+interface WikiCardProps {
+  title: string;
+  imageUrl?: string | null;
+  description: string;
+  extract: string;
+  wikiUrl?: string;
+}
+
+function WikiCard({ title, imageUrl, description, extract, wikiUrl }: WikiCardProps) {
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [cachedSrc, setCachedSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!imageUrl) return;
+    // Check localStorage cache first so previously viewed images load instantly
+    const cacheKey = `wiki_img_${title}`;
+    const storedImage = localStorage.getItem(cacheKey);
+
+    if (storedImage) {
+      setCachedSrc(storedImage);
+      setImageLoaded(true);
+    } else {
+      setCachedSrc(imageUrl);
+      // Cache image URL locally
+      localStorage.setItem(cacheKey, imageUrl);
+    }
+  }, [imageUrl, title]);
+
+  return (
+    <div className="flex flex-col sm:flex-row gap-4 p-4 my-3 bg-neutral-900 border border-neutral-800 rounded-xl">
+      {imageUrl && (
+        <div className="relative w-28 h-28 flex-shrink-0 rounded-lg overflow-hidden bg-neutral-800">
+          {/* Skeleton Loading State */}
+          {!imageLoaded && (
+            <div className="absolute inset-0 animate-pulse bg-neutral-700" />
+          )}
+          <img
+            src={cachedSrc || imageUrl}
+            alt={title}
+            onLoad={() => setImageLoaded(true)}
+            className={`h-full w-full object-cover transition-opacity duration-300 ${
+              imageLoaded ? "opacity-100" : "opacity-0"
+            }`}
+          />
+        </div>
+      )}
+      <div className="flex flex-col justify-center flex-1">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-lg font-bold text-white">{title}</h3>
+          {wikiUrl && (
+            <a
+              href={wikiUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-neutral-400 hover:text-white underline transition"
+            >
+              Wikipedia ↗
+            </a>
+          )}
+        </div>
+        {description && (
+          <p className="text-xs font-medium text-neutral-400 mb-2 capitalize">{description}</p>
+        )}
+        <p className="text-sm text-neutral-300 leading-relaxed line-clamp-3">{extract}</p>
+      </div>
+    </div>
+  );
+}
+
+interface ParsedMessage {
+  thinking: string | null;
+  answer: string;
+  isFallback: boolean;
+}
+
+function parseAIResponse(text: string): ParsedMessage {
+  if (!text) return { thinking: null, answer: "", isFallback: false };
+
+  const isFallback = text.includes("peak hours") || text.includes("fallback mode");
+
+  if (isFallback) {
+    return { thinking: null, answer: text, isFallback: true };
+  }
+
+  let thinking: string | null = null;
+  let answer = text;
+
+  const openTag = String.fromCharCode(60) + "think" + String.fromCharCode(62);
+  const closeTag = String.fromCharCode(60) + "/think" + String.fromCharCode(62);
+  
+  const openTagIndex = text.indexOf(openTag);
+  const closeTagIndex = text.indexOf(closeTag);
+
+  // Case 1: Both tags present - complete thinking block
+  if (openTagIndex !== -1 && closeTagIndex !== -1 && closeTagIndex > openTagIndex) {
+    thinking = text.slice(openTagIndex + 7, closeTagIndex).trim();
+    answer = (text.slice(0, openTagIndex) + text.slice(closeTagIndex + 8)).trim();
+  } 
+  // Case 2: Only open tag present - streaming thinking in progress
+  else if (openTagIndex !== -1) {
+    thinking = text.slice(openTagIndex + 7).trim();
+    answer = ""; // No answer yet while streaming thinking
+  }
+  // Case 3: Only close tag present - missing opening tag
+  else if (closeTagIndex !== -1) {
+    thinking = text.slice(0, closeTagIndex).replace(openTag, "").trim();
+    answer = text.slice(closeTagIndex + 8).trim();
+  }
+
+  answer = answer.replace(/\\\[([\s\S]*?)\\\]/g, '$$$$1$$$$').replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');
+
+  return { thinking, answer, isFallback };
+}
+
 // Equation symbol definitions for tooltips
 const EQUATION_SYMBOLS: Record<string, string> = {
   "R_{\\mu\\nu}": "Ricci curvature tensor - Measures how volumes change due to curvature",
@@ -23,7 +145,7 @@ const EQUATION_SYMBOLS: Record<string, string> = {
   "\\nu": "Nu - Index notation (spacetime indices)",
 };
 
-export default function MessageBubble({ role, content, onEdit, isLoading, loadingPhase, messageId, userId, conversationId, onRetry, onVersionChange }: { role: string; content: string; onEdit?: (newContent: string) => void; isLoading?: boolean; loadingPhase?: number; messageId?: string; userId?: string; conversationId?: string; onRetry?: (messageId: string) => void; onVersionChange?: (messageId: string, version: number, content: string) => void }) {
+export default function MessageBubble({ role, content, onEdit, isLoading, loadingPhase, messageId, userId, conversationId, onRetry, onVersionChange, wikiCardData }: { role: string; content: string; onEdit?: (newContent: string) => void; isLoading?: boolean; loadingPhase?: number; messageId?: string; userId?: string; conversationId?: string; onRetry?: (messageId: string) => void; onVersionChange?: (messageId: string, version: number, content: string) => void; wikiCardData?: WikiCardData }) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -37,12 +159,13 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
   const [isRetrying, setIsRetrying] = useState(false);
   const [versionHistory, setVersionHistory] = useState<any[]>([]);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const [isThinkingOpen, setIsThinkingOpen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const headingIndexRef = useRef(0);
 
   useEffect(() => {
     setEditText(content);
-    headingIndexRef.current = 0; // Reset heading index when content changes
+    headingIndexRef.current = 0;
   }, [content]);
 
   const isUser = role === "user";
@@ -194,6 +317,14 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
 
   const isLong = content.length > LIMIT;
   const isShort = content.length <= 30 && !content.includes('\n');
+  const isPeakHoursMessage = content.includes("This model is at its peak hours. Many people are using this model at the same time.");
+  
+  // Detect if currently streaming thinking content
+  const openTag = String.fromCharCode(60) + "think" + String.fromCharCode(62);
+  const closeTag = String.fromCharCode(60) + "/think" + String.fromCharCode(62);
+  const hasOpenTag = content.includes(openTag);
+  const hasCloseTag = content.includes(closeTag);
+  const isStreamingThinking = hasOpenTag && !hasCloseTag;
 
   const getTruncatedText = () => {
     if (!isLong || expanded) return content;
@@ -204,11 +335,62 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
   };
 
   const renderContent = () => {
+    const { thinking, answer, isFallback } = parseAIResponse(content);
+    
+    // Auto-expand thought process when streaming
+    const shouldShowThinking = !isFallback && thinking;
+    const shouldAutoExpand = isStreamingThinking || isThinkingOpen;
+    
     return (
-      <ReactMarkdown
-        remarkPlugins={[remarkMath, remarkGfm]}
-        rehypePlugins={[rehypeKatex]}
-        components={{
+      <>
+        {/* Show thinking container immediately when streaming starts */}
+        {shouldShowThinking && (
+          <div className="border border-neutral-900 bg-neutral-900/80 rounded-lg overflow-hidden text-xs text-neutral-400 mb-4">
+            <button
+              onClick={() => setIsThinkingOpen(!isThinkingOpen)}
+              className="w-full flex items-center justify-between px-3 py-2 bg-neutral-900 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${isStreamingThinking ? 'bg-neutral-400 animate-pulse' : 'bg-neutral-400'}`}></span>
+                <span className="font-medium text-neutral-300">
+                  {isStreamingThinking ? 'Thinking...' : 'Thought process'}
+                </span>
+              </div>
+              
+              <svg
+                className={`w-4 h-4 transition-transform duration-200 ${shouldAutoExpand ? 'rotate-180' : ''}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {/* Stream thinking content live into container */}
+            {shouldAutoExpand && (
+              <div className="p-3 border-t border-neutral-900 font-mono text-neutral-400 whitespace-pre-wrap bg-neutral-900">
+                {thinking}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Render Wikipedia profile card if data is available */}
+        {wikiCardData && (
+          <WikiCard
+            title={wikiCardData.title}
+            imageUrl={wikiCardData.imageUrl}
+            description={wikiCardData.description}
+            extract={wikiCardData.extract}
+            wikiUrl={wikiCardData.wikiUrl}
+          />
+        )}
+
+        <ReactMarkdown
+          remarkPlugins={[remarkMath, remarkGfm]}
+          rehypePlugins={[rehypeKatex]}
+          components={{
           code({ node, inline, className, children, ...props }: any) {
             const match = /language-(\w+)/.exec(className || '');
             const language = match ? match[1] : 'plaintext';
@@ -298,8 +480,9 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
           },
         }}
       >
-        {content}
+        {answer}
       </ReactMarkdown>
+      </>
     );
   };
 
@@ -491,6 +674,24 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
     );
   }
 
+  // Peak hours warning message - render as alert box
+  if (isPeakHoursMessage && !isUser) {
+    return (
+      <div className="flex gap-3 mb-4">
+        <div className="flex-1 max-w-2xl">
+          <div className="bg-neutral-900/80 border border-neutral-700 rounded-xl p-4 animate-slide-up">
+            <p className="text-white text-sm leading-relaxed mb-2">
+              This model is at its peak hours. Many people are using this model at the same time.
+            </p>
+            <p className="text-neutral-400 text-sm leading-relaxed">
+              Thanks for using our website
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex gap-3 mb-4">
       <div className="flex-1 max-w-2xl -mt-0.5">
@@ -528,67 +729,70 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
           )}
         </div>
 
-        <div className="flex items-center gap-2 mt-2 ml-2">
-          <button
-            onClick={handleCopy}
-            className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors"
-            title={copied ? "Copied!" : "Copy"}
-          >
-            {copied ? (
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20 6 9 17l-5-5"/>
-              </svg>
-            ) : (
-              <img src="/icons/copy.svg" alt="Copy" width="20" height="20" />
-            )}
-          </button>
-          {liked ? (
+        {/* Action buttons - only show after generation is complete */}
+        {!isLoading && (
+          <div className="flex items-center gap-2 mt-2 ml-2">
             <button
-              onClick={handleLike}
+              onClick={handleCopy}
               className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors"
-              title="Like"
+              title={copied ? "Copied!" : "Copy"}
             >
-              <img src="/icons/like-filled.svg" alt="Like" width="20" height="20" />
+              {copied ? (
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 6 9 17l-5-5"/>
+                </svg>
+              ) : (
+                <img src="/icons/copy.svg" alt="Copy" width="20" height="20" />
+              )}
             </button>
-          ) : disliked ? (
-            <button
-              onClick={handleDislike}
-              className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors"
-              title="Dislike"
-            >
-              <img src="/icons/dislike-filled.svg" alt="Dislike" width="20" height="20" />
-            </button>
-          ) : (
-            <>
+            {liked ? (
               <button
                 onClick={handleLike}
                 className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors"
                 title="Like"
               >
-                <img src="/icons/like.svg" alt="Like" width="20" height="20" />
+                <img src="/icons/like-filled.svg" alt="Like" width="20" height="20" />
               </button>
+            ) : disliked ? (
               <button
                 onClick={handleDislike}
                 className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors"
                 title="Dislike"
               >
-                <img src="/icons/dislike.svg" alt="Dislike" width="20" height="20" />
+                <img src="/icons/dislike-filled.svg" alt="Dislike" width="20" height="20" />
               </button>
-            </>
-          )}
-          <button
-            onClick={handleRetry}
-            disabled={isRetrying}
-            className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            title={isRetrying ? "Regenerating..." : "Regenerate"}
-          >
-            {isRetrying ? (
-              <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full" />
             ) : (
-              <img src="/icons/retry.svg" alt="Regenerate" width="20" height="20" />
+              <>
+                <button
+                  onClick={handleLike}
+                  className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors"
+                  title="Like"
+                >
+                  <img src="/icons/like.svg" alt="Like" width="20" height="20" />
+                </button>
+                <button
+                  onClick={handleDislike}
+                  className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors"
+                  title="Dislike"
+                >
+                  <img src="/icons/dislike.svg" alt="Dislike" width="20" height="20" />
+                </button>
+              </>
             )}
-          </button>
-        </div>
+            <button
+              onClick={handleRetry}
+              disabled={isRetrying}
+              className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title={isRetrying ? "Regenerating..." : "Regenerate"}
+            >
+              {isRetrying ? (
+                <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full" />
+              ) : (
+                <img src="/icons/retry.svg" alt="Regenerate" width="20" height="20" />
+              )}
+            </button>
+          </div>
+        )}
         {/* Version Navigation - only show after completion and when there are multiple versions */}
         {showVersionHistory && !isRetrying && totalVersions > 1 && (
           <div className="flex items-center gap-2 mt-2 text-sm text-neutral-400">

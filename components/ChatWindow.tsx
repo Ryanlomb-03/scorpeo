@@ -1,11 +1,10 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import ChatInput from "./ChatInput";
 import MessageBubble from "./MessageBubble";
 import { motion, AnimatePresence } from "framer-motion";
 import { useChat } from "@/context/ChatContext";
-import { useAuth } from "@/context/AuthContext";
 import { useSidebar } from "@/context/SidebarContext";
 
 const greetings = [
@@ -59,13 +58,14 @@ function Typewriter({ text }: { text: string }) {
   return <span>{displayedText}</span>;
 }
 
-export default function ChatWindow({ onLoginClick }: { onLoginClick?: () => void }) {
+export default function ChatWindow() {
   const [greeting, setGreeting] = useState("");
   const [showChat, setShowChat] = useState(false);
   const { messages, sendMessage, currentConversation, pendingConversationId, isSending, loading, retryMessage, updateMessageVersion } = useChat();
-  const { user } = useAuth();
   const { isMobile, setIsSidebarOpen } = useSidebar();
   const router = useRouter();
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const isUserScrollingRef = useRef(false);
 
   useEffect(() => {
     const randomIndex = Math.floor(Math.random() * greetings.length);
@@ -93,6 +93,35 @@ export default function ChatWindow({ onLoginClick }: { onLoginClick?: () => void
       router.push(`/chat/${pendingConversationId}`);
     }
   }, [pendingConversationId, router]);
+
+  // Auto-scroll to bottom when new messages arrive, but respect user scrolling
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+      isUserScrollingRef.current = !isNearBottom;
+    };
+
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Scroll to bottom when messages change, unless user is scrolling up
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    // Only auto-scroll if user is not manually scrolling up
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+
+    if (isNearBottom) {
+      container.scrollTop = container.scrollHeight;
+    }
+  }, [messages.length]); // Only scroll when message count changes, not on every content update
 
   const handleSendMessage = async (message: string) => {
     await sendMessage(message);
@@ -135,7 +164,7 @@ export default function ChatWindow({ onLoginClick }: { onLoginClick?: () => void
           </div>
         ) : showChat ? (
           <>
-            <div className="flex-1 overflow-y-auto px-3 sm:px-6 pt-4 pb-24 scrollbar-thin scrollbar-thumb-neutral-600 scrollbar-track-transparent relative w-full">
+            <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-3 sm:px-6 pt-4 pb-24 scrollbar-thin scrollbar-thumb-neutral-600 scrollbar-track-transparent relative w-full">
               <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-neutral-900 to-transparent pointer-events-none z-10" />
               <div className="max-w-3xl mx-auto w-full">
                 {messages.map((msg) => (
@@ -146,16 +175,16 @@ export default function ChatWindow({ onLoginClick }: { onLoginClick?: () => void
                     isLoading={msg.isLoading}
                     loadingPhase={msg.loadingPhase}
                     messageId={msg.id}
-                    userId={user?.uid}
                     conversationId={currentConversation?.id}
                     onRetry={handleRetry}
                     onVersionChange={handleVersionChange}
+                    wikiCardData={msg.wikiCardData}
                   />
                 ))}
               </div>
             </div>
             <div className="w-full max-w-3xl mx-auto px-0 sm:px-6 pb-4 bg-neutral-900 relative z-20">
-              <ChatInput onSend={handleSendMessage} onLoginClick={onLoginClick} isAIThinking={isSending} position="bottom" />
+              <ChatInput onSend={handleSendMessage} isAIThinking={isSending} position="bottom" />
             </div>
           </>
         ) : showGreeting ? (
@@ -166,13 +195,13 @@ export default function ChatWindow({ onLoginClick }: { onLoginClick?: () => void
               </p>
             </motion.div>
             <motion.div layout className="w-full max-w-3xl px-0 sm:px-6">
-              <ChatInput onSend={handleSendMessage} onLoginClick={onLoginClick} isAIThinking={isSending} position="center" />
+              <ChatInput onSend={handleSendMessage} isAIThinking={isSending} position="center" />
             </motion.div>
           </div>
         ) : (
           <div className="flex-1 flex items-center justify-center w-full">
             <motion.div layout className="w-full max-w-3xl px-0 sm:px-6">
-              <ChatInput onSend={handleSendMessage} onLoginClick={onLoginClick} position="center" />
+              <ChatInput onSend={handleSendMessage} position="center" />
             </motion.div>
           </div>
         )}

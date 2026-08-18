@@ -3,24 +3,22 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useChat } from "@/context/ChatContext";
-import { useAuth } from "@/context/AuthContext";
 import { useSidebar } from "@/context/SidebarContext";
 import MessageBubble from "@/components/MessageBubble";
 import ChatInput from "@/components/ChatInput";
 import Sidebar from "@/components/Sidebar";
-import LoginModal from "@/components/LoginModal";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function ChatPage() {
   const params = useParams();
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
-  const [showLogin, setShowLogin] = useState(false);
   const { selectConversation, loading, messages, sendMessage, currentConversation, resetChat, isSending } = useChat();
-  const { user } = useAuth();
   const { isMobile, setIsSidebarOpen } = useSidebar();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const loadedConversationRef = useRef<string | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const isUserScrollingRef = useRef(false);
 
   // Update browser tab title based on conversation title
   useEffect(() => {
@@ -43,15 +41,10 @@ export default function ChatPage() {
     }
   }, [mounted, params.id, router, resetChat]);
 
-  // Only load conversation once when id changes, OR when user becomes available
+  // Only load conversation once when id changes
   useEffect(() => {
     const id = params.id as string;
     if (!mounted || !id || id === 'favicon.ico') return;
-    if (!user) {
-      // User not loaded yet — clear ref so we retry when user arrives
-      loadedConversationRef.current = null;
-      return;
-    }
     if (id === loadedConversationRef.current) return;
     // Skip if already viewing this conversation with messages
     if (currentConversation?.id === id && messages.length > 0) {
@@ -60,11 +53,35 @@ export default function ChatPage() {
     }
     loadedConversationRef.current = id;
     selectConversation(id);
-  }, [params.id, mounted, user]);
+  }, [params.id, mounted]);
+
+  // Auto-scroll to bottom when new messages arrive, but respect user scrolling
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+      isUserScrollingRef.current = !isNearBottom;
+    };
+
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, []);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    // Only auto-scroll if user is near the bottom
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+
+    if (isNearBottom) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages.length]); // Only scroll when message count changes, not on every content update
 
   const handleSendMessage = async (message: string) => {
     await sendMessage(message);
@@ -96,7 +113,7 @@ export default function ChatPage() {
             </div>
           </div>
         ) : messages.length > 0 ? (
-          <div className="flex-1 overflow-y-auto px-3 sm:px-6 pt-4 pb-24 scrollbar-thin scrollbar-thumb-neutral-600 scrollbar-track-transparent relative w-full">
+          <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-3 sm:px-6 pt-4 pb-24 scrollbar-thin scrollbar-thumb-neutral-600 scrollbar-track-transparent relative w-full">
             <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-neutral-900 to-transparent pointer-events-none z-10" />
             <div className="max-w-3xl mx-auto space-y-4 w-full">
               {messages.map((msg) => (
@@ -107,7 +124,7 @@ export default function ChatPage() {
                   isLoading={msg.isLoading}
                   loadingPhase={msg.loadingPhase}
                   messageId={msg.id}
-                  userId={user?.uid}
+                  wikiCardData={msg.wikiCardData}
                 />
               ))}
               <div ref={messagesEndRef} />

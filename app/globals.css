@@ -318,6 +318,14 @@ pre::-webkit-scrollbar-thumb:hover {
   to { opacity: 1; transform: scale(1); }
 }
 
+/* Slide up animation */
+.animate-slide-up { animation: slide-up 0.3s ease-out; }
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 /* KaTeX font fixes for tables and inline math */
 .katex {
   font-family: 'KaTeX_Main', 'Times New Roman', Times, serif !important;

@@ -1,364 +1,373 @@
-import { NextResponse } from "next/server";
-import supabase from "@/lib/db";
-import * as zlib from "zlib";
-import { modelRouter } from "@/lib/modelRouter";
+interface Message {
+  role: string;
+  content: string;
+}
 
-const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY;
-const NVIDIA_BASE_URL = process.env.NVIDIA_BASE_URL || "https://integrate.api.nvidia.com/v1";
+interface WikiCardData {
+  title: string;
+  imageUrl?: string;
+  description: string;
+  extract: string;
+  wikiUrl?: string;
+}
 
-// Generate smart, contextual responses if the AI service is completely unreachable
-function getFallbackResponse(message: string): string {
-  const msg = message.toLowerCase().trim();
+const SYSTEM_PROMPT: Message = {
+  role: "system",
+  content: `You are Scorpio, a witty, sharp, and intelligent AI built by Codedwaves.
+- Multi-lingual & Slang Aware: Respond in the exact language/slang used by the user (e.g., Sheng/Kiswahili for "sasa", Russian for "privyet").
+- Structured Notebook Lessons: When teaching languages, start with a Markdown Character Table, phonetics/pronunciation, and 3 practice words before full sentences.
+- Thinking Rules: Keep internal thoughts inside  tags strictly concise (2-3 sentences max).
+- Math: Format math with LaTeX ($...$ inline, $$...$$ block).
+- External Data: When external dictionary or Wikipedia data is appended to your context, use it to give 100% accurate grammatical and factual responses.`
+};
+
+// Free Dictionary API lookup
+async function fetchDictionary(word: string) {
+  try {
+    const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data[0]; // Returns definitions, partsOfSpeech, phonetics
+  } catch {
+    return null;
+  }
+}
+
+// 1. Search Wikipedia for best matching article title
+async function searchWikipedia(query: string): Promise<string | null> {
+  try {
+    const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&origin=*`;
+    const res = await fetch(searchUrl, {
+      headers: { "User-Agent": "ScorpioAI/1.0 (contact@codedwaves.com)" },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const topResult = data.query?.search?.[0]?.title;
+    return topResult || null;
+  } catch (error) {
+    console.error("Wikipedia search failed:", error);
+    return null;
+  }
+}
+
+// 2. Fetch full article summary for the best title
+async function fetchWikipediaSummary(title: string) {
+  try {
+    const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
+    const res = await fetch(summaryUrl, {
+      headers: { "User-Agent": "ScorpioAI/1.0 (contact@codedwaves.com)" },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return {
+      title: data.title,
+      description: data.description || "",
+      extract: data.extract || "",
+      imageUrl: data.thumbnail?.source || null,
+      wikiUrl: data.content_urls?.desktop?.page || null,
+    };
+  } catch (error) {
+    console.error("Wikipedia summary fetch failed:", error);
+    return null;
+  }
+}
+
+// Wikipedia Summary REST API lookup with deduplication and search
+async function fetchWikipediaCard(topic: string, fetchedEntities: Set<string>): Promise<WikiCardData | null> {
+  const normalizedTopic = topic.toLowerCase().trim();
   
-  if (msg.includes("hello") || msg.includes("hi ") || msg.includes("hey")) {
-    return "Hello! I'm Scorpio, your AI assistant. How can I help you today?";
+  // If entity was already fetched in this session, skip image payload
+  if (fetchedEntities.has(normalizedTopic)) {
+    return null;
   }
-  if (msg.includes("who are you") || msg.includes("your name") || msg.includes("who made you") || msg.includes("who created you") || msg.includes("who built you") || msg.includes("your origin") || msg.includes("who is scorpio") || msg.includes("codedwaves")) {
-    return "I'm Scorpio, an advanced AI assistant built by Codedwaves — a software and media brand specializing in interconnected, API-first digital platforms and creative animation applications. I help you think, search, and create. Even when some upstream services are busy, I stay active to assist you!";
+
+  try {
+    // First search for the best matching title
+    const matchedTitle = await searchWikipedia(topic);
+    if (!matchedTitle) return null;
+    
+    // Then fetch the summary for the matched title
+    const summaryData = await fetchWikipediaSummary(matchedTitle);
+    if (!summaryData || !summaryData.extract) return null;
+    
+    fetchedEntities.add(normalizedTopic); // Mark entity as fetched
+
+    return {
+      title: summaryData.title,
+      imageUrl: summaryData.imageUrl || null,
+      description: summaryData.description || "",
+      extract: summaryData.extract
+    };
+  } catch {
+    return null;
   }
-  if (msg.includes("help") || msg.includes("what can you do")) {
-    return "I can assist you with a wide range of tasks, including answering questions, coding, data analysis, brainstorming ideas, or writing documents. What would you like to focus on?";
-  }
-  if (msg.includes("code") || msg.includes("javascript") || msg.includes("python") || msg.includes("html") || msg.includes("css")) {
-    return "I can absolutely help you write, debug, and optimize code! Please tell me more about the program or function you're working on, and I'll generate the solution.";
-  }
-  if (msg.includes("weather") || msg.includes("time") || msg.includes("date")) {
-    return "I don't have access to real-time location or live weather sensors right now, but feel free to ask me general questions or have me write code to fetch live data!";
+}
+
+// Intent detection for dictionary and Wikipedia queries
+function detectIntent(lastMessage: string): { type: 'dictionary' | 'wikipedia' | null; query: string } {
+  const lower = lastMessage.toLowerCase();
+  
+  // Dictionary intent patterns
+  const dictPatterns = [
+    /define\s+(\w+)/i,
+    /is\s+(\w+)\s+(a\s+)?(noun|verb|adjective|adverb|pronoun|preposition|conjunction|interjection)/i,
+    /what\s+(does|is)\s+(\w+)\s+mean/i,
+    /meaning\s+of\s+(\w+)/i
+  ];
+  
+  for (const pattern of dictPatterns) {
+    const match = lower.match(pattern);
+    if (match) {
+      return { type: 'dictionary', query: match[1] };
+    }
   }
   
-  return `I received your message: "${message}". I am currently operating in high-reliability local fallback mode due to high demand on the primary servers. Please tell me how I can best assist you with this topic!`;
+  // Wikipedia intent patterns
+  const wikiPatterns = [
+    /what\s+is\s+(.+?)(?:\?|$)/i,
+    /who\s+is\s+(.+?)(?:\?|$)/i,
+    /tell\s+me\s+about\s+(.+?)(?:\?|$)/i,
+    /explain\s+(.+?)(?:\?|$)/i
+  ];
+  
+  for (const pattern of wikiPatterns) {
+    const match = lower.match(pattern);
+    if (match) {
+      return { type: 'wikipedia', query: match[1].trim() };
+    }
+  }
+  
+  return { type: null, query: '' };
+}
+
+// Provider 1: Cloudflare Workers AI
+async function callCloudflare(messages: Message[]) {
+  const response = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/deepseek-ai/deepseek-r1-distill-qwen-32b`,
+    {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.CLOUDFLARE_API_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messages,
+        stream: true,
+        max_tokens: 4096,
+      }),
+    }
+  );
+  if (!response.ok) throw new Error(`Cloudflare failed: ${response.status}`);
+  return response;
+}
+
+// Provider 2: NVIDIA NIM
+async function callNvidia(messages: Message[]) {
+  const response = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${process.env.NVIDIA_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "deepseek-ai/deepseek-r1",
+      messages,
+      temperature: 0.6,
+      top_p: 0.95,
+      max_tokens: 4096,
+      stream: true,
+    }),
+  });
+  if (!response.ok) throw new Error(`NVIDIA NIM failed: ${response.status}`);
+  return response;
+}
+
+// Provider 3: Groq Cloud
+async function callGroq(messages: Message[]) {
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "qwen/qwen-2.5-72b-instruct",
+      messages,
+      temperature: 0.6,
+      max_tokens: 4096,
+      stream: true,
+    }),
+  });
+  if (!response.ok) throw new Error(`Groq failed: ${response.status}`);
+  return response;
+}
+
+// Stream processor for different API formats
+async function processStream(response: Response, wikiCardData: WikiCardData | null = null) {
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  
+  const stream = new ReadableStream({
+    async start(controller) {
+      const reader = response.body?.getReader();
+      if (!reader) {
+        controller.close();
+        return;
+      }
+
+      try {
+        // Send wiki card data first if available
+        if (wikiCardData) {
+          const wikiPayload = JSON.stringify({ type: 'wiki_card', data: wikiCardData });
+          controller.enqueue(encoder.encode(`[WIKI_CARD_START]${wikiPayload}[WIKI_CARD_END]`));
+        }
+        
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          
+          // Handle different streaming formats
+          const lines = chunk.split('\n');
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6).trim();
+              if (data === '[DONE]') continue;
+              
+              try {
+                const parsed = JSON.parse(data);
+                // Cloudflare format
+                const content = parsed.response || parsed.result?.response || 
+                               // NVIDIA/Groq format
+                               parsed.choices?.[0]?.delta?.content || "";
+                if (content) {
+                  controller.enqueue(encoder.encode(content));
+                }
+              } catch (e) {
+                // Skip invalid JSON
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Stream reading error:", error);
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      "Connection": "keep-alive",
+    },
+  });
 }
 
 export async function POST(req: Request) {
-  const { message, history, username } = await req.json();
-
-  if (!message) {
-    return NextResponse.json({ reply: "No message provided" }, { status: 400 });
-  }
-
-  try {
-    // Step 1: Route the request using the AI Router
-    const routingResult = await modelRouter.route(message);
+  const { messages } = await req.json();
+  const lastUserMessage = messages[messages.length - 1]?.content || "";
+  
+  // Track fetched entities for deduplication
+  const fetchedEntities = new Set<string>();
+  
+  // 1. Check if Wikipedia summary is needed
+  let wikiContext = "";
+  let wikiCardData: WikiCardData | null = null;
+  
+  // Strict entity lookup trigger - only explicit entity information requests
+  const isExplicitLookup = /^(who is|what is|tell me about|search for|lookup|who was|what was|where is)\b/i.test(lastUserMessage.trim());
+  
+  // Skip search for contextual follow-up messages
+  const isFollowUp = /^(can you|how do|teach me|tell me|explain|yes|no|more|continue|what about)\b/i.test(lastUserMessage.trim());
+  
+  const needsSearch = isExplicitLookup && !isFollowUp;
+  
+  if (needsSearch) {
+    // Clean search term
+    const cleanQuery = lastUserMessage
+      .replace(/who is|what is|tell me about|search for|lookup|who was|what was|where is/gi, "")
+      .trim();
     
-    // Step 2: If cached response exists, return it immediately
-    if (routingResult.cached && routingResult.cache_key) {
-      const encoder = new TextEncoder();
-      const stream = new ReadableStream({
-        async start(controller) {
-          const { data } = await supabase
-            .from('cached_responses')
-            .select('response')
-            .eq('hash', routingResult.cache_key!)
-            .single();
-          
-          if (data) {
-            controller.enqueue(encoder.encode(data.response));
+    if (cleanQuery.length > 2) {
+      const matchedTitle = await searchWikipedia(cleanQuery);
+      if (matchedTitle) {
+        // Reject irrelevant titles (e.g., query "teach me" returning manga titles)
+        const queryWords = cleanQuery.toLowerCase().split(" ");
+        const titleMatchesQuery = queryWords.some((word: string) =>
+          word.length > 3 && matchedTitle.toLowerCase().includes(word)
+        );
+
+        if (titleMatchesQuery) {
+          const summaryData = await fetchWikipediaSummary(matchedTitle);
+          if (summaryData?.extract) {
+            wikiCardData = {
+              title: summaryData.title,
+              imageUrl: summaryData.imageUrl || null,
+              description: summaryData.description || "",
+              extract: summaryData.extract,
+              wikiUrl: summaryData.wikiUrl
+            };
+            wikiContext = `\n\n[LIVE SEARCH DATA FOR "${summaryData.title}"]:
+Description: ${summaryData.description}
+Summary: ${summaryData.extract}`;
           }
-          controller.close();
-        },
-      });
-
-      return new Response(stream, {
-        headers: {
-          "Content-Type": "text/plain; charset=utf-8",
-          "Cache-Control": "no-cache, no-transform",
-          "Connection": "keep-alive",
-          "X-Cached": "true"
-        },
-      });
-    }
-
-    // Step 3: Use the selected model or fallback
-    const model = routingResult.model;
-    const apiKey = routingResult.api_key;
-    const parameters = routingResult.parameters;
-    const intent = routingResult.intent;
-
-    if (!model || !apiKey) {
-      throw new Error('No available model for this request');
-    }
-
-    const startTime = Date.now();
-    const systemInstructions = `IDENTITY & ORIGIN:
-You are Scorpio, an advanced AI assistant built by Codedwaves — an umbrella software and media brand specializing in interconnected, API-first digital platforms and creative animation applications. If a user asks who created you, who made you, what your origins are, or about Codedwaves, state clearly, accurately, and humbly that you were built by Codedwaves, just as Gemini acknowledges Google or ChatGPT acknowledges OpenAI. Do not brag or sound overly boastful; keep a helpful, matter-of-fact, and technically grounded tone. Do not fabricate features or products.
-
-CODEDWAVES ECOSYSTEM KNOWLEDGE BASE:
-You are fully aware of the companion platforms within the Codedwaves digital network. When asked, share the correct link as a clean Markdown link (e.g., [BMDTV](https://bmdtv.vercel.app)). Do not invent URLs. Here is the catalog:
-
-1. BMDTV (BroMoose Data Television) — platform for childhood shows with a free name-retrieval API. [https://bmdtv.vercel.app](https://bmdtv.vercel.app)
-2. Scorpio — a modern, sleek AI chat agent companion. (That's you.) [https://scorpio.vercel.app](https://scorpio.vercel.app)
-3. C-mail — centralized authentication, communication, and mailing backbone of the ecosystem. [https://c-mail.vercel.app](https://c-mail.vercel.app)
-4. Bxarchi — a platform for writing and sharing book ideas and literature (API needs fixing). [https://bxarchi.vercel.app](https://bxarchi.vercel.app)
-5. BMDB (BroMoose Data Base) — an API-driven movie database and community hub. [https://bmdb.vercel.app](https://bmdb.vercel.app)
-6. Codeducate — a developer community learning hub for sharing resources. [https://codeducate.vercel.app](https://codeducate.vercel.app)
-7. Studio Disgust — the official portfolio platform for the animation studio team. [https://studio-disgust.vercel.app](https://studio-disgust.vercel.app)
-8. Rush-ai — an AI-driven movie expert engine with free-forever API access. [https://crashai.vercel.app](https://crashai.vercel.app)
-9. Wirenode — a global network platform for reading, tracking, and posting news. [https://wirenodes.vercel.app](https://wirenodes.vercel.app)
-10. Playra — a global video-sharing platform built to amplify all voices. [https://playra-app.vercel.app](https://playra-app.vercel.app)
-11. Nyati — a rapid automated API generator designed to eliminate manual data pipelines. [https://nyati-core.vercel.app](https://nyati-core.vercel.app)
-12. OSA (OpenStudio Animation) — a community hub for animators to share and showcase work. [https://capeostudio.vercel.app](https://capeostudio.vercel.app)
-13. Freedict — an open-source dictionary providing free API access for external developers. [https://free-dict.vercel.app](https://free-dict.vercel.app)
-14. Netame — a sleek anime information platform featuring a "crystal touch" design and free API. [https://netame.vercel.app](https://netame.vercel.app)
-
-When asked how Codedwaves projects interoperate, give realistic examples (e.g., C-mail for auth, Nyati for data, Freedict/BMDB for data sources). Never invent features, statuses, or URLs.
-
-CRITICAL INSTRUCTION: For mathematical equations in the main text, use standard markdown format with $$ delimiters.
-
-For mathematical formulas, ALWAYS use this exact format:
-$$
-YOUR_MATH_HERE
-$$
-
-Use these specific LaTeX patterns:
-- R_{\mu\nu} for Ricci tensor (NOT Rμν)
-- \frac{1}{2} for fractions (NOT 1/2)
-- c^{4} for powers (NOT c^4)
-- \mu, \nu, \pi for Greek letters
-
-EXAMPLE:
-The Einstein field equation is:
-$$
-R_{\mu\nu} - \frac{1}{2} R g_{\mu\nu} = \frac{8\pi G}{c^4} T_{\mu\nu}
-$$
-
-CRITICAL TABLE FORMATTING RULES:
-- When creating tables with mathematical symbols, use LaTeX math notation with $ delimiters for inline math
-- Use $R_{\mu\nu}$ for Ricci tensor, $g_{\mu\nu}$ for metric tensor, etc.
-- This ensures proper mathematical font rendering with KaTeX
-- Keep table symbols readable and properly formatted
-
-EXAMPLE TABLE FORMAT:
-| Symbol | Name | Physical Meaning |
-|--------|------|-------------------|
-| $R_{\mu\nu}$ | Ricci curvature tensor | Measures how volumes change due to curvature |
-| $R$ | Ricci scalar | The trace of $R_{\mu\nu}$ |
-| $g_{\mu\nu}$ | Metric tensor | Defines distances and geometry of spacetime |
-| $G$ | Gravitational constant | Newton's constant ($\approx 6.674 \times 10^{-11}$ m³/kg/s²) |
-| $c$ | Speed of light | ($\approx 3 \times 10^8$ m/s) |
-| $T_{\mu\nu}$ | Stress-energy tensor | Contains all matter and energy content |
-
-ALWAYS use LaTeX with $ delimiters for mathematical symbols in tables to ensure proper font rendering.`;
-    
-    const chatMessages = [
-      { role: "system", content: systemInstructions },
-      ...(history && history.length > 0 ? history.map((m: any) => ({ role: m.role, content: m.content })) : []),
-      { role: "user", content: message }
-    ];
-
-    let fullResponse = "";
-    let responseSuccess = false;
-    let errorType: string | undefined;
-
-    try {
-      const res = await fetch(model.endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model: intent.type === 'generate_code' ? "minimaxai/minimax-m2.7" : "minimaxai/minimax-m2.7", // Can be made dynamic based on model registry
-          messages: chatMessages,
-          ...parameters
-        }),
-      });
-
-      const latency = Date.now() - startTime;
-
-      if (res.ok) {
-        responseSuccess = true;
-        
-        // Forward the streaming response
-        const encoder = new TextEncoder();
-        const decoder = new TextDecoder();
-        const stream = new ReadableStream({
-          async start(streamController) {
-            const reader = res.body?.getReader();
-            if (!reader) {
-              streamController.close();
-              return;
-            }
-
-            try {
-              let buffer = "";
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) {
-                  // Cache the complete response
-                  if (intent.complexity <= 3) { // Only cache simple queries
-                    await modelRouter.cacheResponse(
-                      message, 
-                      fullResponse, 
-                      model.id, 
-                      intent.type, 
-                      24 // 24 hour cache
-                    );
-                  }
-                  
-                  // Update health metrics
-                  await modelRouter.updateHealth(
-                    model.id, 
-                    latency, 
-                    true
-                  );
-                  
-                  streamController.close();
-                  break;
-                }
-
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop() || ""; // Keep incomplete line in buffer
-
-                for (const line of lines) {
-                  if (line.startsWith('data: ')) {
-                    const data = line.slice(6).trim();
-                    if (data === '[DONE]') {
-                      streamController.close();
-                      return;
-                    }
-
-                    try {
-                      const parsed = JSON.parse(data);
-                      const content = parsed.choices?.[0]?.delta?.content;
-                      if (content) {
-                        fullResponse += content;
-                        streamController.enqueue(encoder.encode(content));
-                      }
-                    } catch (e) {
-                      // Skip invalid JSON chunks
-                    }
-                  }
-                }
-              }
-            } catch (err) {
-              errorType = 'parse_error';
-              await modelRouter.updateHealth(model.id, latency, false, errorType);
-              streamController.error(err);
-            }
-          },
-        });
-
-        return new Response(stream, {
-          headers: {
-            "Content-Type": "text/plain; charset=utf-8",
-            "Cache-Control": "no-cache, no-transform",
-            "Connection": "keep-alive",
-            "X-Model": model.id,
-            "X-Intent": intent.type,
-          },
-        });
-      } else {
-        responseSuccess = false;
-        errorType = res.status === 429 ? '429' : res.status === 500 ? '500' : 'other';
-        const errorText = await res.text().catch(() => "unknown error");
-        console.error(`${model.name} API error: ${res.status} - ${errorText}`);
-        
-        // Update health metrics
-        await modelRouter.updateHealth(model.id, latency, false, errorType);
+        }
       }
-    } catch (apiErr: any) {
-      const latency = Date.now() - startTime;
-      errorType = apiErr.name === 'TimeoutError' ? 'timeout' : 'other';
-      responseSuccess = false;
-      
-      console.error(`${model.name} API request failed:`, apiErr?.message || apiErr);
-      
-      // Update health metrics
-      await modelRouter.updateHealth(model.id, latency, false, errorType);
     }
-
-    // --- Fallback: smart static response ---
-    console.warn("All models failed. Using static fallback response.");
-    const reply = getFallbackResponse(message);
-    const encoder = new TextEncoder();
-    const stream = new ReadableStream({
-      async start(controller) {
-        controller.enqueue(encoder.encode(reply));
-        controller.close();
-      },
-    });
-
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/plain; charset=utf-8",
-        "Cache-Control": "no-cache, no-transform",
-        "Connection": "keep-alive",
-        "X-Fallback": "true"
-      },
-    });
-
-  } catch (err) {
-    console.error("Chat API outer error:", err);
-    return new Response(getFallbackResponse(message), {
-      headers: { "Content-Type": "text/plain; charset=utf-8" },
-    });
   }
-}
 
-export async function PUT(req: Request) {
-  try {
-    const body = await req.json().catch(() => ({}));
-    let { content, instruction } = body;
-
-    // Handle case where content might be a Buffer JSON or Hex object
-    if (content && typeof content === 'string') {
-      if (content.startsWith('{"type":"Buffer"')) {
-        try {
-          const parsed = JSON.parse(content);
-          content = Buffer.from(parsed.data).toString('utf-8');
-        } catch (e) {}
-      } else if (content.startsWith('\\x')) {
-        try {
-          const hex = content.replace(/^\\x/, '');
-          content = Buffer.from(hex, 'hex').toString('utf-8');
-        } catch (e) {}
+  // 2. Check if Dictionary lookup is needed
+  if (lastUserMessage.toLowerCase().includes("define") || lastUserMessage.toLowerCase().includes("meaning of")) {
+    const wordMatch = lastUserMessage.match(/define\s+(\w+)|meaning\s+of\s+(\w+)/i);
+    if (wordMatch) {
+      const word = wordMatch[1] || wordMatch[2];
+      const dictData = await fetchDictionary(word);
+      if (dictData) {
+        wikiContext += `\n\n[DICTIONARY CONTEXT for ${word}]:\n${JSON.stringify(dictData)}`;
       }
     }
+  }
 
-    if (!instruction) {
-      return NextResponse.json({ error: "Instruction required" }, { status: 400 });
-    }
+  // 3. Combine into master system prompt
+  const SYSTEM_PROMPT: Message = {
+    role: "system",
+    content: `You are Scorpio, an intelligent, sharp, and factual AI built by Codedwaves.
+Factual Accuracy: When live search data is provided in context, you MUST use it as the source of truth. Never misidentify real people, YouTubers, historical figures, or public events as fictional characters.
+Structured Learning: If the user asks to learn about a topic or person, give a clear overview, key facts, and offer to dive deeper.
+Thinking Rules: Keep internal thinking inside  tags strictly under 2-3 sentences max.
+Multi-lingual & Slang Aware: Respond in the exact language/slang used by the user.
+Grammar: If Dictionary context is provided, use it for accurate grammatical information.${wikiContext}`
+  };
 
-    if (!NVIDIA_API_KEY) {
-      return NextResponse.json({ error: "API Key missing" }, { status: 500 });
-    }
+  const payloadMessages = [SYSTEM_PROMPT, ...messages.slice(-6)];
 
-    const prompt = `You are a professional markdown writer. Write or edit the document based on this instruction: "${instruction}".
+  // 4. Chain providers (Cloudflare -> NVIDIA -> Groq)
+  try {
+    const response = await callCloudflare(payloadMessages);
+    return await processStream(response, wikiCardData);
+  } catch (err1) {
+    console.warn("Cloudflare failed. Escalating to NVIDIA NIM...", err1);
+  }
 
-    IMPORTANT:
-    - If the document is currently empty or contains gibberish, write a new high-quality document from scratch based on the instruction.
-    - Return ONLY the markdown content itself. No explanations, no meta-commentary.
+  try {
+    const response = await callNvidia(payloadMessages);
+    return await processStream(response, wikiCardData);
+  } catch (err2) {
+    console.warn("NVIDIA NIM failed. Escalating to Groq...", err2);
+  }
 
-    Current Document Content: ${content || "(empty document)"}`;
-
-    const res = await fetch(`${NVIDIA_BASE_URL}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${NVIDIA_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: "minimaxai/minimax-m2.7",
-        messages: [{ role: "user", content: prompt }],
-        temperature: 1,
-        top_p: 0.95,
-        max_tokens: 8192,
-        stream: false
-      }),
+  try {
+    const response = await callGroq(payloadMessages);
+    return await processStream(response, wikiCardData);
+  } catch (err3) {
+    console.error("All AI Providers failed.", err3);
+    return new Response(JSON.stringify({ error: "All servers busy. Please try again shortly." }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" }
     });
-
-    if (!res.ok) {
-      const errorText = await res.text();
-      console.error("NVIDIA API call failed:", errorText);
-      return NextResponse.json({ error: "API_UNREACHABLE" });
-    }
-    
-    const data = await res.json();
-    const improved = data.choices?.[0]?.message?.content || "";
-    return NextResponse.json({ improved });
-  } catch (err) {
-    console.error("Library AI outer error:", err);
-    return NextResponse.json({ error: "Server Error" }, { status: 500 });
   }
 }

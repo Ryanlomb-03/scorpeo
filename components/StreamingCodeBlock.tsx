@@ -97,53 +97,36 @@ export default function StreamingCodeBlock({
   return (
     <div className={`relative group ${className}`}>
       <div 
-        className="rounded-2xl overflow-hidden transition-all duration-200"
-        style={{
-          background: '#0d1117',
-          border: '1px solid rgba(255,255,255,0.08)',
-          boxShadow: '0 1px 1px rgba(0,0,0,0.15), 0 8px 24px rgba(0,0,0,0.18)',
-        }}
+        className="rounded-2xl overflow-hidden border border-neutral-800 bg-[#121212] transition-all duration-200"
       >
         {/* Sticky header with language and copy button */}
         <div 
-          className="sticky top-0 z-10 flex items-center justify-between px-4 py-3"
-          style={{
-            background: 'rgba(13, 17, 23, 0.95)',
-            borderBottom: '1px solid rgba(255,255,255,0.06)',
-            backdropFilter: 'blur(8px)',
-            height: '44px',
-          }}
+          className="sticky top-0 z-10 flex items-center justify-between px-4 py-2 bg-neutral-900/80 border-b border-neutral-800/60"
         >
           <div className="flex items-center gap-2">
-            <div 
-              className="px-2.5 py-1 rounded-full text-xs font-medium"
-              style={{
-                background: 'rgba(255,255,255,0.05)',
-                color: '#8b949e'
-              }}
-            >
-              {language}
-            </div>
+            <span className="text-xs font-semibold text-neutral-400 capitalize">
+              {language || "code"}
+            </span>
           </div>
           <button
             onClick={handleCopy}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm text-gray-300 hover:text-white transition-colors hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-1.5 rounded-lg bg-neutral-800/80 px-2.5 py-1 text-xs text-neutral-300 hover:bg-neutral-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={showStartMessage}
           >
             {copied ? (
               <>
-                <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                <svg width="13" height="13" fill="currentColor" viewBox="0 0 16 16" className="text-green-400">
                   <path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 0 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z"/>
                 </svg>
-                <span className="text-green-400 font-medium">Copied</span>
+                <span>Copied</span>
               </>
             ) : (
               <>
-                <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                <svg width="13" height="13" fill="currentColor" viewBox="0 0 16 16">
                   <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
                   <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
                 </svg>
-                <span className="font-medium">Copy</span>
+                <span>Copy</span>
               </>
             )}
           </button>
@@ -155,7 +138,7 @@ export default function StreamingCodeBlock({
           className="overflow-x-auto min-h-[60px]"
           style={{
             fontFamily: '"JetBrains Mono", monospace',
-            fontSize: '14px',
+            fontSize: '0.875rem',
             lineHeight: '1.7',
           }}
         >
@@ -170,7 +153,7 @@ export default function StreamingCodeBlock({
               className="shiki transition-opacity duration-200"
               style={{
                 background: 'transparent',
-                padding: '20px 24px',
+                padding: '1rem',
                 margin: 0,
                 opacity: isHighlighting ? 0.7 : 1,
               }}

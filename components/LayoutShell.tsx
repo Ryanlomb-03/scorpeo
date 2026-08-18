@@ -1,13 +1,10 @@
 "use client";
 
-import { useAuth } from "@/context/AuthContext";
 import Sidebar from "@/components/Sidebar";
-import LoginModal from "@/components/LoginModal";
 import { useSidebar } from "@/context/SidebarContext";
 import { AnimatePresence, motion } from "framer-motion";
 
 export default function LayoutShell({ children }: { children: React.ReactNode }) {
-  const { showLogin, setShowLogin } = useAuth();
   const { isMobile, isSidebarOpen, setIsSidebarOpen, hydrated } = useSidebar();
 
   return (
@@ -26,13 +23,11 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
         )}
       </AnimatePresence>
 
-      <Sidebar onLoginClick={() => setShowLogin(true)} />
+      <Sidebar />
       
       <div className="flex-1 flex flex-col min-h-0 bg-neutral-900 w-full">
         {children}
       </div>
-      
-      <LoginModal isOpen={showLogin} onClose={() => setShowLogin(false)} />
     </div>
   );
 }

@@ -1,17 +1,14 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useChat } from "@/context/ChatContext";
-import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { useSidebar } from "@/context/SidebarContext";
 
 export default function SearchChats({ onClose }: { onClose?: () => void }) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const { conversations } = useChat();
-  const { user } = useAuth();
   const { isMobile, setIsSidebarOpen } = useSidebar();
   const router = useRouter();
 
@@ -38,38 +35,61 @@ export default function SearchChats({ onClose }: { onClose?: () => void }) {
     }
   };
 
-  // Filter conversations
-  const filteredConversations = conversations.filter(c => 
-    (c.title || "").toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  // Server-side search with debouncing
+  // Search through conversation titles and cached message contents
   useEffect(() => {
-    const debounceTimer = setTimeout(async () => {
-      if (searchQuery.length > 0 && user) {
-        setIsSearching(true);
+    if (searchQuery.length > 0) {
+      const cached = localStorage.getItem("guestConversations");
+      const searchResultsWithSnippets: any[] = [];
+      
+      if (cached) {
         try {
-          const res = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`, {
-            headers: { "x-user-id": user.uid }
-          });
-          const data = await res.json();
-          setSearchResults(data.results || []);
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) {
+            parsed.forEach((conv: any) => {
+              // Search in title
+              const titleMatch = (conv.title || "").toLowerCase().includes(searchQuery.toLowerCase());
+              
+              // Search in cached messages
+              const cachedMessages = localStorage.getItem(`guestMessages_${conv.id}`);
+              let contentMatches: string[] = [];
+              
+              if (cachedMessages) {
+                try {
+                  const msgs = JSON.parse(cachedMessages);
+                  if (Array.isArray(msgs)) {
+                    contentMatches = msgs
+                      .filter((msg: any) => 
+                        msg.role === "assistant" && 
+                        msg.content && 
+                        msg.content.toLowerCase().includes(searchQuery.toLowerCase())
+                      )
+                      .map((msg: any) => msg.content);
+                  }
+                } catch (error) {
+                  console.error("Failed to parse cached messages:", error);
+                }
+              }
+              
+              // Include conversation if title or content matches
+              if (titleMatch || contentMatches.length > 0) {
+                searchResultsWithSnippets.push({
+                  ...conv,
+                  snippets: contentMatches.slice(0, 2) // Show up to 2 matching snippets
+                });
+              }
+            });
+            setSearchResults(searchResultsWithSnippets);
+          }
         } catch (error) {
-          console.error("Search error:", error);
-          setSearchResults([]);
-        } finally {
-          setIsSearching(false);
+          console.error("Failed to search cached conversations:", error);
         }
-      } else {
-        setSearchResults([]);
-        setIsSearching(false);
       }
-    }, 300); // 300ms debounce
+    } else {
+      setSearchResults([]);
+    }
+  }, [searchQuery]);
 
-    return () => clearTimeout(debounceTimer);
-  }, [searchQuery, user]);
-
-  // Use server results if available, otherwise fall back to client-side
+  // Use search results if available, otherwise fall back to all conversations
   const displayResults = searchQuery.length > 0 ? searchResults : conversations;
 
   // Highlight search term in text
@@ -127,15 +147,7 @@ export default function SearchChats({ onClose }: { onClose?: () => void }) {
 
           {/* Results Area */}
           <div className="space-y-1">
-            {isSearching ? (
-              // Skeleton Loader
-              Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-transparent animate-pulse">
-                  <div className="h-5 bg-neutral-800 rounded w-3/4"></div>
-                  <div className="h-4 bg-neutral-800 rounded w-16"></div>
-                </div>
-              ))
-            ) : displayResults.length > 0 ? (
+            {displayResults.length > 0 ? (
               // Actual Results
               displayResults.map((conv) => (
                 <button

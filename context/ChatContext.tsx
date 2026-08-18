@@ -1,7 +1,6 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from "react";
-import { useAuth } from "@/context/AuthContext";
 
 export interface Message {
   id: string;
@@ -14,6 +13,12 @@ export interface Message {
   currentVersion?: number;
   totalVersions?: number;
   versionHistory?: any[];
+  wikiCardData?: {
+    title: string;
+    imageUrl?: string;
+    description: string;
+    extract: string;
+  };
 }
 
 export interface Conversation {
@@ -46,142 +51,98 @@ interface ChatContextType {
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
-const supabaseUrl = "https://ncbilugbsichgbdebbvn.supabase.co";
-const supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5jYmlsdWdic2ljaGdiZGViYnZuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2Mzg0MTMsImV4cCI6MjA5MzIxNDQxM30.uto7UUj9n1BZmrgqrf9NIa70__IQmt4ZFLmIr45YAvM";
-
 function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).substring(2, 15);
 }
 
 export function ChatProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [pendingConversationId, setPendingConversationId] = useState<string | null>(null);
-  const loadingConversationRef = useRef<string | null>(null);
-  const conversationCacheRef = useRef<Record<string, Message[]>>({});
-  const fetchConversations = useCallback(async () => {
-    if (!user) return;
-    
-    // Load cached conversations instantly
-    const cached = localStorage.getItem("conversations");
-    if (cached) {
-      try {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed)) {
-          setConversations(parsed);
-        }
-      } catch {}
-    }
-    
-    try {
-      const res = await fetch("/api/conversations", {
-        headers: { "x-user-id": user.uid }
-      });
-      const data = await res.json();
-      setConversations(data || []);
-      // Cache for next load
-      localStorage.setItem("conversations", JSON.stringify(data || []));
-    } catch (error) {
-      console.error("Failed to fetch conversations:", error);
-    }
-  }, [user]);
-
+  const guestUserId = useRef<string>("guest-user");
+  const updateBufferRef = useRef<string>("");
+  const animationFrameId = useRef<number | null>(null);
+  
+  // Generate or retrieve guest user ID
   useEffect(() => {
-    fetchConversations();
-  }, [fetchConversations]);
+    const storedId = localStorage.getItem("guestUserId");
+    if (storedId) {
+      guestUserId.current = storedId;
+    } else {
+      const newId = "guest-" + generateId();
+      guestUserId.current = newId;
+      localStorage.setItem("guestUserId", newId);
+    }
+  }, []);
+  
+  // Load conversations from localStorage
+  useEffect(() => {
+    const loadConversations = () => {
+      const cached = localStorage.getItem("guestConversations");
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) {
+            setConversations(parsed);
+          }
+        } catch (error) {
+          console.error("Failed to load conversations:", error);
+        }
+      }
+    };
+    loadConversations();
+  }, []);
 
   const createConversation = async (): Promise<string> => {
-    if (!user) throw new Error("Not authenticated");
-    
     const id = generateId();
+    const newConv: Conversation = {
+      id,
+      userId: guestUserId.current,
+      title: "New Chat",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
     
-    try {
-      const res = await fetch("/api/conversations", {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "x-user-id": user.uid 
-        },
-        body: JSON.stringify({ id })
-      });
-      const conversation = await res.json();
-      
-      setConversations(prev => [conversation, ...prev]);
-      setCurrentConversation(conversation);
-      setMessages([]);
-      
-      return conversation.id;
-    } catch (error) {
-      console.error("Failed to create conversation:", error);
-      throw error;
-    }
+    setConversations(prev => [newConv, ...prev]);
+    setCurrentConversation(newConv);
+    setMessages([]);
+    
+    // Save to localStorage immediately
+    setTimeout(() => {
+      const currentConvs = [...conversations, newConv];
+      localStorage.setItem("guestConversations", JSON.stringify(currentConvs));
+    }, 0);
+    
+    return id;
   };
 
   const selectConversation = async (id: string) => {
-    if (!user) return;
-    
-    // Prevent duplicate loads
-    if (loadingConversationRef.current === id) return;
-    loadingConversationRef.current = id;
-    
     // Skip if already on this conversation with messages
     if (currentConversation?.id === id && messages.length > 0) {
-      loadingConversationRef.current = null;
       return;
     }
     
-    // If we have cached messages, use them
-    if (conversationCacheRef.current[id]) {
-      setMessages(conversationCacheRef.current[id]);
-      setLoading(false);
-      loadingConversationRef.current = null;
-      // Also fetch conversation metadata if needed
+    // Find conversation in local state
+    const conv = conversations.find(c => c.id === id);
+    if (conv) {
+      setCurrentConversation(conv);
+    }
+    
+    // Load messages from localStorage
+    const cachedMessages = localStorage.getItem(`guestMessages_${id}`);
+    if (cachedMessages) {
       try {
-        const convRes = await fetch(`/api/conversations?id=${id}`, {
-          headers: { "x-user-id": user.uid }
-        });
-        const convData = await convRes.json();
-        const conv = convData?.find((c: Conversation) => c.id === id);
-        if (conv) setCurrentConversation(conv);
+        const msgs = JSON.parse(cachedMessages);
+        setMessages(msgs || []);
       } catch (error) {
-        console.error("Failed to load conversation metadata:", error);
+        console.error("Failed to load messages:", error);
+        setMessages([]);
       }
-      return;
-    }
-    
-    // Only clear if switching to a different conversation
-    if (currentConversation?.id !== id) {
+    } else {
       setMessages([]);
-    }
-    setLoading(true);
-    
-    try {
-      const convRes = await fetch(`/api/conversations?id=${id}`, {
-        headers: { "x-user-id": user.uid }
-      });
-      const convData = await convRes.json();
-      const conv = convData?.find((c: Conversation) => c.id === id);
-      if (conv) {
-        setCurrentConversation(conv);
-      }
-      
-      // Load last 20 messages only for speed
-      const res = await fetch(`/api/messages?conversationId=${id}&limit=20`, {
-        headers: { "x-user-id": user.uid }
-      });
-      const msgs = await res.json();
-      setMessages(msgs || []);
-      // Cache messages for future loads
-      conversationCacheRef.current[id] = msgs || [];
-    } catch (error) {
-      console.error("Failed to load conversation:", error);
-    } finally {
-      setLoading(false);
-      loadingConversationRef.current = null;
     }
   };
 
@@ -195,27 +156,22 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       const data = await res.json();
       const finalTitle = data.title || "New Chat";
 
-      // Update in Supabase Database FIRST to ensure persistence
-      await fetch(`/api/conversations/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, title: finalTitle })
-      });
+      // Update conversation title in localStorage immediately
+      setTimeout(() => {
+        const cached = localStorage.getItem("guestConversations");
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            if (Array.isArray(parsed)) {
+              localStorage.setItem("guestConversations", JSON.stringify(
+                parsed.map((c: Conversation) => c.id === id ? { ...c, title: finalTitle } : c)
+              ));
+            }
+          } catch {}
+        }
+      }, 0);
 
-      // Update local storage cache immediately after DB update
-      const cached = localStorage.getItem("conversations");
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed)) {
-            localStorage.setItem("conversations", JSON.stringify(
-              parsed.map((c: Conversation) => c.id === id ? { ...c, title: finalTitle } : c)
-            ));
-          }
-        } catch {}
-      }
-
-      // Typewriter effect - starts after DB is updated
+      // Typewriter effect
       let currentTitle = "";
       for (let i = 0; i < finalTitle.length; i++) {
         currentTitle += finalTitle[i];
@@ -237,8 +193,6 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   };
 
   const sendMessage = async (content: string, onChunk?: (chunk: string) => void) => {
-    if (!user) return;
-    
     setIsSending(true);
     
     let convId = currentConversation?.id;
@@ -249,7 +203,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       // Set ALL local state immediately before any async
       const newConv: Conversation = {
         id: convId,
-        userId: user.uid,
+        userId: guestUserId.current,
         title: "", // Start empty for typewriter effect
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -257,18 +211,21 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setConversations(prev => Array.isArray(prev) ? [newConv, ...prev] : [newConv]);
       setCurrentConversation(newConv);
       setPendingConversationId(convId);
-      // Update localStorage cache
-      const cached = localStorage.getItem("conversations");
-      let existing: Conversation[] = [];
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          existing = Array.isArray(parsed) ? parsed : [];
-        } catch {
-          existing = [];
+      
+      // Update localStorage cache immediately
+      setTimeout(() => {
+        const cached = localStorage.getItem("guestConversations");
+        let existing: Conversation[] = [];
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            existing = Array.isArray(parsed) ? parsed : [];
+          } catch {
+            existing = [];
+          }
         }
-      }
-      localStorage.setItem("conversations", JSON.stringify([newConv, ...existing]));
+        localStorage.setItem("guestConversations", JSON.stringify([newConv, ...existing]));
+      }, 0);
     }
     
     // Add user message immediately
@@ -280,9 +237,6 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       content
     };
     setMessages(prev => [...prev, userMessage]);
-    // Update cache for this conversation
-    const existingCache = conversationCacheRef.current[convId] || [];
-    conversationCacheRef.current[convId] = [...existingCache, userMessage];
     
     // Add AI placeholder immediately
     const assistantId = generateId();
@@ -293,124 +247,140 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       content: "",
       isLoading: true
     }]);
-    
-    // All API calls in background - don't block UI
+
+    // Reset streaming refs
+    updateBufferRef.current = "";
+    animationFrameId.current = null;
+
+    // Throttled update function using requestAnimationFrame
+    const flushUpdate = (id: string, cardData: any) => {
+      setMessages(prev =>
+        prev.map(m =>
+          m.id === id ? { ...m, content: updateBufferRef.current, wikiCardData: cardData } : m
+        )
+      );
+    };
+
+    // Call real AI API
     try {
       if (isNewConversation) {
-        // Create conversation and generate title concurrently in the background without blocking the UI
-        const initNewConversation = async () => {
-          try {
-            await fetch("/api/conversations", {
-              method: "POST",
-              headers: { 
-                "Content-Type": "application/json",
-                "x-user-id": user.uid 
-              },
-              body: JSON.stringify({ id: convId, title: "New Chat" })
-            });
-            
-            // Start background title generation with typewriter effect
-            generateAndTypeTitle(convId, content);
-          } catch (e) {
-            console.error("Failed to initialize new conversation in background:", e);
-          }
-        };
-        initNewConversation();
+        // Start background title generation with typewriter effect
+        generateAndTypeTitle(convId, content);
       }
-      fetch("/api/messages", {
+      
+      const chatRes = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(userMessage)
+        body: JSON.stringify({
+          messages: [
+            ...messages.map(m => ({ role: m.role, content: m.content })),
+            { role: "user", content }
+          ]
+        })
       });
       
-      // Call real AI API immediately without artificial delays
-      try {
-        const chatRes = await fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            message: content,
-            history: messages,
-            username: user?.displayName || null
-          })
-        });
+      if (!chatRes.ok) {
+        throw new Error(`API error: ${chatRes.status}`);
+      }
+
+      const reader = chatRes.body?.getReader();
+      if (!reader) throw new Error("No readable stream");
+
+      const decoder = new TextDecoder("utf-8");
+      let assistantContent = "";
+      let isFirstChunk = true;
+      let buffer = "";
+      let wikiCardData: any = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        buffer += chunk;
         
-        if (!chatRes.ok) {
-          throw new Error(`API error: ${chatRes.status}`);
-        }
-
-        const reader = chatRes.body?.getReader();
-        if (!reader) throw new Error("No readable stream");
-
-        const decoder = new TextDecoder("utf-8");
-        let assistantContent = "";
-        let isFirstChunk = true;
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const chunk = decoder.decode(value, { stream: true });
-          assistantContent += chunk;
-
-          // Replace {username} placeholder on the fly if needed
-          let displayContent = assistantContent;
-          if (user?.displayName) {
-            displayContent = displayContent.replace(/{username}/gi, user.displayName);
-          }
-
-          // As soon as the first chunk arrives, hide the pulsing dot and show the typed text
-          if (isFirstChunk) {
-            isFirstChunk = false;
-            setMessages(prev => prev.map(m => 
-              m.id === assistantId ? { ...m, content: displayContent, isLoading: false } : m
-            ));
-          } else {
-            // Update message incrementally
-            setMessages(prev => prev.map(m => 
-              m.id === assistantId ? { ...m, content: displayContent } : m
-            ));
+        // Check for wiki card markers
+        const wikiCardMatch = buffer.match(/\[WIKI_CARD_START\]([\s\S]*?)\[WIKI_CARD_END\]/);
+        if (wikiCardMatch && !wikiCardData) {
+          try {
+            const cardData = JSON.parse(wikiCardMatch[1]);
+            if (cardData.type === 'wiki_card') {
+              wikiCardData = cardData.data;
+              // Remove the wiki card markers from the content
+              buffer = buffer.replace(wikiCardMatch[0], '');
+              assistantContent = buffer;
+            }
+          } catch (e) {
+            console.error("Failed to parse wiki card data:", e);
           }
         }
+        
+        assistantContent = buffer;
 
-        // Final replacement just in case
-        if (user?.displayName) {
-          assistantContent = assistantContent.replace(/{username}/gi, user.displayName);
+        // Replace {username} placeholder on the fly if needed
+        let displayContent = assistantContent;
+        displayContent = displayContent.replace(/{username}/gi, "Guest");
+
+        // Update buffer and schedule throttled UI update
+        updateBufferRef.current = displayContent;
+
+        // As soon as the first chunk arrives, hide the pulsing dot and show the typed text
+        if (isFirstChunk) {
+          isFirstChunk = false;
+          setMessages(prev => prev.map(m =>
+            m.id === assistantId ? { ...m, content: displayContent, isLoading: false, wikiCardData } : m
+          ));
+        } else {
+          // Throttled update using requestAnimationFrame
+          if (!animationFrameId.current) {
+            animationFrameId.current = requestAnimationFrame(() => {
+              flushUpdate(assistantId, wikiCardData);
+              animationFrameId.current = null;
+            });
+          }
         }
+      }
 
-        // Update message with final AI response and make sure loading is disabled
-        setMessages(prev => prev.map(m => 
-          m.id === assistantId ? { ...m, content: assistantContent, isLoading: false } : m
-        ));
-        // Update cache with final assistant message
-        const existingCache = conversationCacheRef.current[convId] || [];
-        conversationCacheRef.current[convId] = [...existingCache, {
+      // Final replacement just in case
+      assistantContent = assistantContent.replace(/{username}/gi, "Guest");
+
+      // Update message with final AI response and make sure loading is disabled
+      setMessages(prev => prev.map(m => 
+        m.id === assistantId ? { ...m, content: assistantContent, isLoading: false, wikiCardData } : m
+      ));
+      
+      // Save messages to localStorage immediately
+      setTimeout(() => {
+        const finalMessages = [...messages, userMessage, {
           id: assistantId,
           conversationId: convId,
           role: "assistant",
-          content: assistantContent
+          content: assistantContent,
+          wikiCardData
         }];
-        
-        // Save to DB (with actual username, not placeholder)
-        await fetch("/api/messages", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            id: assistantId,
-            conversationId: convId,
-            role: "assistant",
-            content: assistantContent
-          })
-        });
-      } catch (aiError) {
-        console.error("AI API error:", aiError);
-        setMessages(prev => prev.map(m => 
-          m.id === assistantId ? { ...m, content: "I'm having trouble connecting right now. Please try sending your message again in a moment.", isLoading: false } : m
-        ));
+        localStorage.setItem(`guestMessages_${convId}`, JSON.stringify(finalMessages));
+      }, 0);
+      
+    } catch (aiError) {
+      console.error("AI API error:", aiError);
+      
+      // Check if error response contains JSON error message
+      let errorMessage = "This model is at its peak hours. Many people are using this model at the same time.";
+      
+      if (aiError instanceof Response) {
+        try {
+          const errorData = await aiError.json();
+          if (errorData.error) {
+            errorMessage = errorData.error;
+          }
+        } catch {
+          // If not JSON, use default message
+        }
       }
       
-    } catch (error) {
-      console.error("Failed to send message:", error);
+      setMessages(prev => prev.map(m => 
+        m.id === assistantId ? { ...m, content: errorMessage, isLoading: false } : m
+      ));
     } finally {
       setIsSending(false);
       setPendingConversationId(null);
@@ -428,14 +398,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   };
 
   const deleteConversation = async (id: string) => {
-    if (!user) return;
-    
     try {
-      await fetch(`/api/conversations/${id}`, {
-        method: "DELETE",
-        headers: { "x-user-id": user.uid }
-      });
-      
       setConversations(prev => prev.filter(c => c.id !== id));
       
       // Clear current if deleted
@@ -444,23 +407,28 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         setMessages([]);
       }
       
-      // Update localStorage cache
-      const cached = localStorage.getItem("conversations");
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed)) {
-            localStorage.setItem("conversations", JSON.stringify(parsed.filter((c: Conversation) => c.id !== id)));
-          }
-        } catch {}
-      }
+      // Update localStorage cache immediately
+      setTimeout(() => {
+        const cached = localStorage.getItem("guestConversations");
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            if (Array.isArray(parsed)) {
+              localStorage.setItem("guestConversations", JSON.stringify(parsed.filter((c: Conversation) => c.id !== id)));
+            }
+          } catch {}
+        }
+      }, 0);
+      
+      // Delete messages for this conversation
+      localStorage.removeItem(`guestMessages_${id}`);
     } catch (error) {
       console.error("Failed to delete conversation:", error);
     }
   };
 
   const renameConversation = async (id: string, newTitle: string) => {
-    if (!user || !newTitle.trim()) return;
+    if (!newTitle.trim()) return;
 
     const trimmedTitle = newTitle.trim();
 
@@ -472,32 +440,25 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setCurrentConversation(prev => prev ? { ...prev, title: trimmedTitle } : null);
     }
 
-    try {
-      await fetch(`/api/conversations/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, title: trimmedTitle })
-      });
-
-      // Update localStorage cache
-      const cached = localStorage.getItem("conversations");
+    // Update localStorage cache immediately
+    setTimeout(() => {
+      const cached = localStorage.getItem("guestConversations");
       if (cached) {
         try {
           const parsed = JSON.parse(cached);
           if (Array.isArray(parsed)) {
-            localStorage.setItem("conversations", JSON.stringify(
+            localStorage.setItem("guestConversations", JSON.stringify(
               parsed.map((c: Conversation) => c.id === id ? { ...c, title: trimmedTitle } : c)
             ));
           }
-        } catch {}
+        } catch (error) {
+          console.error("Failed to update localStorage:", error);
+        }
       }
-    } catch (error) {
-      console.error("Failed to rename conversation:", error);
-    }
+    }, 0);
   };
 
   const togglePinConversation = async (id: string, is_pinned: boolean) => {
-    if (!user) return;
 
     // Optimistic UI update
     setConversations(prev => 
@@ -507,32 +468,25 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setCurrentConversation(prev => prev ? { ...prev, is_pinned } : null);
     }
 
-    try {
-      await fetch(`/api/conversations/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, is_pinned })
-      });
-
-      // Update localStorage cache
-      const cached = localStorage.getItem("conversations");
+    // Update localStorage cache immediately
+    setTimeout(() => {
+      const cached = localStorage.getItem("guestConversations");
       if (cached) {
         try {
           const parsed = JSON.parse(cached);
           if (Array.isArray(parsed)) {
-            localStorage.setItem("conversations", JSON.stringify(
+            localStorage.setItem("guestConversations", JSON.stringify(
               parsed.map((c: Conversation) => c.id === id ? { ...c, is_pinned } : c)
             ));
           }
-        } catch {}
+        } catch (error) {
+          console.error("Failed to update localStorage:", error);
+        }
       }
-    } catch (error) {
-      console.error("Failed to toggle pin status:", error);
-    }
+    }, 0);
   };
 
   const retryMessage = async (messageId: string, conversationId: string) => {
-    if (!user) return;
 
     try {
       // Set the message to loading state with empty content
@@ -584,6 +538,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           : m
         )
       );
+      
+      // Update localStorage with new message content immediately
+      setTimeout(() => {
+        const finalMessages = messages.map(m => 
+          m.id === messageId ? { ...m, content: streamedContent, isLoading: false } : m
+        );
+        localStorage.setItem(`guestMessages_${conversationId}`, JSON.stringify(finalMessages));
+      }, 0);
 
     } catch (error) {
       console.error('Error retrying message:', error);
@@ -605,6 +567,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         : m
       )
     );
+    
+    // Update localStorage if we have a current conversation
+    if (currentConversation) {
+      const finalMessages = messages.map(m => 
+        m.id === messageId ? { ...m, content, currentVersion: version } : m
+      );
+      localStorage.setItem(`guestMessages_${currentConversation.id}`, JSON.stringify(finalMessages));
+    }
   };
 
   return (

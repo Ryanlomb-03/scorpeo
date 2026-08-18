@@ -20,12 +20,10 @@ const imageFormats = [
 
 export default function ChatInput({ 
   onSend, 
-  onLoginClick, 
   isAIThinking,
   position = "bottom"
 }: { 
   onSend?: (message: string) => void; 
-  onLoginClick?: () => void; 
   isAIThinking?: boolean;
   position?: "bottom" | "center";
 }) {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import Image from "next/image";
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
@@ -8,6 +8,10 @@ import StreamingCodeBlock from './StreamingCodeBlock';
 import 'katex/dist/katex.min.css';
 
 const LIMIT = 150;
+
+// Tag constants for thinking blocks
+const THINK_OPEN_TAG = String.fromCharCode(60) + "think" + String.fromCharCode(62);
+const THINK_CLOSE_TAG = String.fromCharCode(60) + "/think" + String.fromCharCode(62);
 
 interface WikiCardData {
   title: string;
@@ -64,23 +68,13 @@ function WikiCard({ title, imageUrl, description, extract, wikiUrl }: WikiCardPr
         </div>
       )}
       <div className="flex flex-col justify-center flex-1">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
           <h3 className="text-lg font-bold text-white">{title}</h3>
-          {wikiUrl && (
-            <a
-              href={wikiUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs text-neutral-400 hover:text-white underline transition"
-            >
-              Wikipedia ↗
-            </a>
-          )}
         </div>
         {description && (
           <p className="text-xs font-medium text-neutral-400 mb-2 capitalize">{description}</p>
         )}
-        <p className="text-sm text-neutral-300 leading-relaxed line-clamp-3">{extract}</p>
+        <p className="text-sm text-neutral-300 leading-relaxed whitespace-pre-wrap">{extract}</p>
       </div>
     </div>
   );
@@ -104,11 +98,8 @@ function parseAIResponse(text: string): ParsedMessage {
   let thinking: string | null = null;
   let answer = text;
 
-  const openTag = String.fromCharCode(60) + "think" + String.fromCharCode(62);
-  const closeTag = String.fromCharCode(60) + "/think" + String.fromCharCode(62);
-  
-  const openTagIndex = text.indexOf(openTag);
-  const closeTagIndex = text.indexOf(closeTag);
+  const openTagIndex = text.indexOf(THINK_OPEN_TAG);
+  const closeTagIndex = text.indexOf(THINK_CLOSE_TAG);
 
   // Case 1: Both tags present - complete thinking block
   if (openTagIndex !== -1 && closeTagIndex !== -1 && closeTagIndex > openTagIndex) {
@@ -122,7 +113,7 @@ function parseAIResponse(text: string): ParsedMessage {
   }
   // Case 3: Only close tag present - missing opening tag
   else if (closeTagIndex !== -1) {
-    thinking = text.slice(0, closeTagIndex).replace(openTag, "").trim();
+    thinking = text.slice(0, closeTagIndex).replace(THINK_OPEN_TAG, "").trim();
     answer = text.slice(closeTagIndex + 8).trim();
   }
 
@@ -169,6 +160,14 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
   }, [content]);
 
   const isUser = role === "user";
+
+  // Check if message is still streaming (has unclosed think tag or is loading)
+  const isStreaming = isLoading || (content && content.includes(THINK_OPEN_TAG) && !content.includes(THINK_CLOSE_TAG));
+
+  // Detect if currently streaming thinking content
+  const hasOpenTag = content.includes(THINK_OPEN_TAG);
+  const hasCloseTag = content.includes(THINK_CLOSE_TAG);
+  const isStreamingThinking = hasOpenTag && !hasCloseTag;
 
   // Fetch user's existing reaction when messageId and userId are available
   useEffect(() => {
@@ -318,13 +317,6 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
   const isLong = content.length > LIMIT;
   const isShort = content.length <= 30 && !content.includes('\n');
   const isPeakHoursMessage = content.includes("This model is at its peak hours. Many people are using this model at the same time.");
-  
-  // Detect if currently streaming thinking content
-  const openTag = String.fromCharCode(60) + "think" + String.fromCharCode(62);
-  const closeTag = String.fromCharCode(60) + "/think" + String.fromCharCode(62);
-  const hasOpenTag = content.includes(openTag);
-  const hasCloseTag = content.includes(closeTag);
-  const isStreamingThinking = hasOpenTag && !hasCloseTag;
 
   const getTruncatedText = () => {
     if (!isLong || expanded) return content;
@@ -333,6 +325,93 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
     if (lastSpace > 0) truncated = truncated.slice(0, lastSpace);
     return truncated + " ...";
   };
+
+  const markdownComponents = useMemo(() => ({
+    code({ node, inline, className, children, ...props }: any) {
+      const match = /language-(\w+)/.exec(className || '');
+      const language = match ? match[1] : 'plaintext';
+      const codeContent = String(children).replace(/\n$/, '');
+
+      if (!inline) {
+        return (
+          <StreamingCodeBlock 
+            streamContent={codeContent}
+            language={language}
+            theme="github-dark"
+            isComplete={!isLoading}
+          />
+        );
+      }
+      return (
+        <code className="bg-neutral-800 px-1.5 py-0.5 rounded text-sm" {...props}>
+          {children}
+        </code>
+      );
+    },
+    p({ children }: any) {
+      return <p className="mb-4 last:mb-0 leading-relaxed">{children}</p>;
+    },
+    h1({ children }: any) {
+      const text = String(children).trim();
+      const id = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      return <h1 id={`heading-${id}`} className="text-2xl font-bold mb-6 mt-8 scroll-mt-4">{children}</h1>;
+    },
+    h2({ children }: any) {
+      const text = String(children).trim();
+      const id = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      return <h2 id={`heading-${id}`} className="text-xl font-bold mb-4 mt-8 scroll-mt-4">{children}</h2>;
+    },
+    h3({ children }: any) {
+      const text = String(children).trim();
+      const id = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      return <h3 id={`heading-${id}`} className="text-lg font-bold mb-3 mt-6 scroll-mt-4">{children}</h3>;
+    },
+    ul({ children }: any) {
+      return <ul className="list-disc list-inside mb-4 space-y-2">{children}</ul>;
+    },
+    ol({ children }: any) {
+      return <ol className="list-decimal list-inside mb-4 space-y-2">{children}</ol>;
+    },
+    li({ children }: any) {
+      return <li className="ml-2">{children}</li>;
+    },
+    strong({ children }: any) {
+      return <strong className="font-bold">{children}</strong>;
+    },
+    em({ children }: any) {
+      return <em className="italic">{children}</em>;
+    },
+    a({ children, href }: any) {
+      return <a href={href} className="text-blue-400 hover:text-blue-300 underline">{children}</a>;
+    },
+    blockquote({ children }: any) {
+      return <blockquote className="border-l-4 border-neutral-600 pl-4 italic my-4">{children}</blockquote>;
+    },
+    table({ children }: any) {
+      return (
+        <div className="my-6 overflow-x-auto">
+          <table className="w-full border-collapse">
+            {children}
+          </table>
+        </div>
+      );
+    },
+    thead({ children }: any) {
+      return <thead className="border-b border-neutral-700">{children}</thead>;
+    },
+    tbody({ children }: any) {
+      return <tbody>{children}</tbody>;
+    },
+    tr({ children }: any) {
+      return <tr className="border-b border-neutral-800 last:border-0">{children}</tr>;
+    },
+    th({ children }: any) {
+      return <th className="px-4 py-3 text-left font-semibold text-sm">{children}</th>;
+    },
+    td({ children }: any) {
+      return <td className="px-4 py-3 text-sm">{children}</td>;
+    },
+  }), [isLoading]);
 
   const renderContent = () => {
     const { thinking, answer, isFallback } = parseAIResponse(content);
@@ -390,96 +469,8 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
         <ReactMarkdown
           remarkPlugins={[remarkMath, remarkGfm]}
           rehypePlugins={[rehypeKatex]}
-          components={{
-          code({ node, inline, className, children, ...props }: any) {
-            const match = /language-(\w+)/.exec(className || '');
-            const language = match ? match[1] : 'plaintext';
-            const codeContent = String(children).replace(/\n$/, '');
-
-            if (!inline) {
-              return (
-                <div className="my-4">
-                  <StreamingCodeBlock 
-                    streamContent={codeContent}
-                    language={language}
-                    theme="github-dark"
-                    isComplete={!isLoading}
-                    onStartMessage={isLoading ? "Generating code..." : "Here's the code for this solution:"}
-                  />
-                </div>
-              );
-            }
-            return (
-              <code className="bg-neutral-800 px-1.5 py-0.5 rounded text-sm" {...props}>
-                {children}
-              </code>
-            );
-          },
-          p({ children }) {
-            return <p className="mb-4 last:mb-0 leading-relaxed">{children}</p>;
-          },
-          h1({ children }) {
-            const text = String(children).trim();
-            const id = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-            return <h1 id={`heading-${id}`} className="text-2xl font-bold mb-6 mt-8 scroll-mt-4">{children}</h1>;
-          },
-          h2({ children }) {
-            const text = String(children).trim();
-            const id = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-            return <h2 id={`heading-${id}`} className="text-xl font-bold mb-4 mt-8 scroll-mt-4">{children}</h2>;
-          },
-          h3({ children }) {
-            const text = String(children).trim();
-            const id = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-            return <h3 id={`heading-${id}`} className="text-lg font-bold mb-3 mt-6 scroll-mt-4">{children}</h3>;
-          },
-          ul({ children }) {
-            return <ul className="list-disc list-inside mb-4 space-y-2">{children}</ul>;
-          },
-          ol({ children }) {
-            return <ol className="list-decimal list-inside mb-4 space-y-2">{children}</ol>;
-          },
-          li({ children }) {
-            return <li className="ml-2">{children}</li>;
-          },
-          strong({ children }) {
-            return <strong className="font-bold">{children}</strong>;
-          },
-          em({ children }) {
-            return <em className="italic">{children}</em>;
-          },
-          a({ children, href }) {
-            return <a href={href} className="text-blue-400 hover:text-blue-300 underline">{children}</a>;
-          },
-          blockquote({ children }) {
-            return <blockquote className="border-l-4 border-neutral-600 pl-4 italic my-4">{children}</blockquote>;
-          },
-          table({ children }) {
-            return (
-              <div className="my-6 overflow-x-auto">
-                <table className="w-full border-collapse">
-                  {children}
-                </table>
-              </div>
-            );
-          },
-          thead({ children }) {
-            return <thead className="border-b border-neutral-700">{children}</thead>;
-          },
-          tbody({ children }) {
-            return <tbody>{children}</tbody>;
-          },
-          tr({ children }) {
-            return <tr className="border-b border-neutral-800 last:border-0">{children}</tr>;
-          },
-          th({ children }) {
-            return <th className="px-4 py-3 text-left font-semibold text-sm">{children}</th>;
-          },
-          td({ children }) {
-            return <td className="px-4 py-3 text-sm">{children}</td>;
-          },
-        }}
-      >
+          components={markdownComponents}
+        >
         {answer}
       </ReactMarkdown>
       </>
@@ -729,67 +720,78 @@ export default function MessageBubble({ role, content, onEdit, isLoading, loadin
           )}
         </div>
 
-        {/* Action buttons - only show after generation is complete */}
-        {!isLoading && (
-          <div className="flex items-center gap-2 mt-2 ml-2">
+        {/* Sources section - rendered at bottom before copy button */}
+        {wikiCardData && (
+          <div className="mt-6 border-t border-neutral-800/60 pt-4">
+            <h4 className="text-base font-semibold text-white mb-3">Sources</h4>
+            <ol className="space-y-2.5 text-sm list-decimal list-outside ml-4 text-neutral-300">
+              <li className="pl-1">
+                <div className="inline-flex items-center gap-2">
+                  <a
+                    href={wikiCardData.wikiUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="decoration-dotted-custom text-white hover:text-white transition"
+                  >
+                    {wikiCardData.title} - Wikipedia
+                  </a>
+                  <div className="relative inline-block group">
+                    {/* Pill Badge */}
+                    <span className="ml-2 inline-flex items-center rounded-full bg-[#27272a] px-2.5 py-0.5 text-[11px] font-medium text-neutral-400 border border-neutral-700/40 cursor-pointer select-none">
+                      Wikipedia
+                    </span>
+
+                    {/* Clickable Hover Card Popover */}
+                    <a
+                      href={wikiCardData.wikiUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-[320px] p-4 bg-[#18181b] border border-neutral-800 rounded-2xl shadow-2xl z-50 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 ease-out cursor-pointer block text-left"
+                    >
+                      {/* Arrow pointing to center of badge */}
+                      <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-[#18181b] border-t border-l border-neutral-800 rotate-45" />
+
+                      {/* Card Content */}
+                      <div className="relative z-10 space-y-2">
+                        <div className="flex items-center gap-1.5 text-xs text-neutral-400 font-medium">
+                          <img
+                            src="https://en.wikipedia.org/static/favicon/wikipedia.ico"
+                            alt="Wikipedia"
+                            className="w-4 h-4 rounded-sm"
+                          />
+                          <span>Wikipedia</span>
+                        </div>
+                        <div className="text-sm font-semibold text-white tracking-tight">
+                          {wikiCardData.title} - Wikipedia
+                        </div>
+                        <p className="text-xs text-neutral-300/90 leading-relaxed line-clamp-3">
+                          "{wikiCardData.extract}"
+                        </p>
+                      </div>
+                    </a>
+                  </div>
+                </div>
+              </li>
+            </ol>
+          </div>
+        )}
+
+        {/* Render copy button ONLY after the AI has finished generating */}
+        {!isStreaming && role === "assistant" && content && (
+          <div className="mt-2 flex items-center justify-end">
             <button
               onClick={handleCopy}
-              className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors"
-              title={copied ? "Copied!" : "Copy"}
+              className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition"
+              title="Copy response"
             >
               {copied ? (
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white">
                   <path d="M20 6 9 17l-5-5"/>
                 </svg>
               ) : (
-                <img src="/icons/copy.svg" alt="Copy" width="20" height="20" />
+                <img src="/icons/copy.svg" alt="Copy" width="14" height="14" />
               )}
-            </button>
-            {liked ? (
-              <button
-                onClick={handleLike}
-                className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors"
-                title="Like"
-              >
-                <img src="/icons/like-filled.svg" alt="Like" width="20" height="20" />
-              </button>
-            ) : disliked ? (
-              <button
-                onClick={handleDislike}
-                className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors"
-                title="Dislike"
-              >
-                <img src="/icons/dislike-filled.svg" alt="Dislike" width="20" height="20" />
-              </button>
-            ) : (
-              <>
-                <button
-                  onClick={handleLike}
-                  className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors"
-                  title="Like"
-                >
-                  <img src="/icons/like.svg" alt="Like" width="20" height="20" />
-                </button>
-                <button
-                  onClick={handleDislike}
-                  className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors"
-                  title="Dislike"
-                >
-                  <img src="/icons/dislike.svg" alt="Dislike" width="20" height="20" />
-                </button>
-              </>
-            )}
-            <button
-              onClick={handleRetry}
-              disabled={isRetrying}
-              className="p-1.5 rounded-full hover:bg-neutral-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              title={isRetrying ? "Regenerating..." : "Regenerate"}
-            >
-              {isRetrying ? (
-                <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full" />
-              ) : (
-                <img src="/icons/retry.svg" alt="Regenerate" width="20" height="20" />
-              )}
+              <span className="text-[11px]">{copied ? "Copied" : "Copy"}</span>
             </button>
           </div>
         )}

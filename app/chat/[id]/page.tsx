@@ -89,9 +89,9 @@ export default function ChatPage() {
 
   return (
     <>
-      <div className="p-3 sm:p-4 flex items-center gap-3 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.5)] z-20 relative bg-neutral-900">
+      <div className="p-3 sm:p-4 flex items-center gap-3 z-20 relative bg-neutral-900">
         {isMobile && (
-          <button 
+          <button
             onClick={() => setIsSidebarOpen(true)}
             disabled={!mounted || loading}
             className={`p-1.5 text-gray-400 hover:text-white rounded-md hover:bg-neutral-800 transition-colors ${(!mounted || loading) ? 'opacity-50 pointer-events-none' : ''}`}
@@ -113,8 +113,7 @@ export default function ChatPage() {
             </div>
           </div>
         ) : messages.length > 0 ? (
-          <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-3 sm:px-6 pt-4 pb-24 scrollbar-thin scrollbar-thumb-neutral-600 scrollbar-track-transparent relative w-full">
-            <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-neutral-900 to-transparent pointer-events-none z-10" />
+          <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-3 sm:px-6 pt-4 pb-32 scrollbar-thin scrollbar-thumb-neutral-600 scrollbar-track-transparent relative w-full [mask-image:linear-gradient(to_bottom,transparent_0%,black_40px,black_calc(100%-80px),transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,transparent_0%,black_40px,black_calc(100%-80px),transparent_100%)]">
             <div className="max-w-3xl mx-auto space-y-4 w-full">
               {messages.map((msg) => (
                 <MessageBubble 

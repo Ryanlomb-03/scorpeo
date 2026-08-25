@@ -140,10 +140,10 @@ export default function ChatWindow() {
   const showGreeting = !currentConversation && messages.length === 0;
 
   return (
-    <div className="flex flex-col flex-1 bg-neutral-900 w-full max-w-full">
-      <div className="p-3 sm:p-4 flex items-center gap-3 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.5)] z-20 relative bg-neutral-900">
+    <div className="flex flex-col flex-1 bg-neutral-900 w-full max-w-full relative">
+      <div className="p-3 sm:p-4 flex items-center gap-3 z-20 relative bg-neutral-900 fixed top-0 left-0 right-0">
         {isMobile && (
-          <button 
+          <button
             onClick={() => setIsSidebarOpen(true)}
             disabled={loading}
             className={`p-1.5 text-gray-400 hover:text-white rounded-md hover:bg-neutral-800 transition-colors ${loading ? 'opacity-50 pointer-events-none' : ''}`}
@@ -153,7 +153,7 @@ export default function ChatWindow() {
         )}
         <h1 className="text-white text-lg font-semibold" style={{ fontFamily: "var(--font-inter), system-ui, sans-serif" }}>Scorpio</h1>
       </div>
-      <div className="flex-1 flex flex-col min-h-0 w-full max-w-full">
+      <div className="flex-1 flex flex-col min-h-0 w-full max-w-full pt-[56px]">
         {loading ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="spinner-loader">
@@ -164,8 +164,7 @@ export default function ChatWindow() {
           </div>
         ) : showChat ? (
           <>
-            <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-3 sm:px-6 pt-4 pb-24 scrollbar-thin scrollbar-thumb-neutral-600 scrollbar-track-transparent relative w-full">
-              <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-neutral-900 to-transparent pointer-events-none z-10" />
+            <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-3 sm:px-6 pt-4 pb-32 scrollbar-thin scrollbar-thumb-neutral-600 scrollbar-track-transparent relative w-full">
               <div className="max-w-3xl mx-auto w-full">
                 {messages.map((msg) => (
                   <MessageBubble 
@@ -206,7 +205,7 @@ export default function ChatWindow() {
           </div>
         )}
       </div>
-      <div className="p-4 text-center border-t border-neutral-800">
+      <div className="p-4 text-center">
         <p className="text-xs text-gray-500">
           <a href="/terms" className="hover:underline">Scorpio Terms</a>
           <span className="mx-1">and</span>

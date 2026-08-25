@@ -33,17 +33,33 @@ async function fetchDictionary(word: string) {
   }
 }
 
-// 1. Search Wikipedia for best matching article title
+// 1. Search Wikipedia for best matching article title using Opensearch API
 async function searchWikipedia(query: string): Promise<string | null> {
   try {
-    const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&origin=*`;
+    // Clean and normalize space variations for creator/brand titles
+    const normalizedQuery = query.trim();
+
+    // Search Opensearch endpoint
+    const searchUrl = `https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(normalizedQuery)}&limit=10&namespace=0&format=json&origin=*`;
     const res = await fetch(searchUrl, {
       headers: { "User-Agent": "ScorpioAI/1.0 (contact@codedwaves.com)" },
     });
     if (!res.ok) return null;
     const data = await res.json();
-    const topResult = data.query?.search?.[0]?.title;
-    return topResult || null;
+
+    // data[1] contains array of matched article titles
+    const titles: string[] = data[1] || [];
+    if (titles.length === 0) return null;
+
+    // Ignore album/song/film disambiguation pages when searching primary entities
+    const primaryTitle = titles.find((t: string) =>
+      !t.toLowerCase().includes("(album)") &&
+      !t.toLowerCase().includes("(song)") &&
+      !t.toLowerCase().includes("(disambiguation)") &&
+      !t.toLowerCase().includes("(film)")
+    ) || titles[0];
+
+    return primaryTitle;
   } catch (error) {
     console.error("Wikipedia search failed:", error);
     return null;
@@ -273,49 +289,45 @@ export async function POST(req: Request) {
   
   // Track fetched entities for deduplication
   const fetchedEntities = new Set<string>();
-  
+
   // 1. Check if Wikipedia summary is needed
   let wikiContext = "";
   let wikiCardData: WikiCardData | null = null;
-  
-  // Strict entity lookup trigger - only explicit entity information requests
-  const isExplicitLookup = /^(who is|what is|tell me about|search for|lookup|who was|what was|where is)\b/i.test(lastUserMessage.trim());
-  
-  // Skip search for contextual follow-up messages
-  const isFollowUp = /^(can you|how do|teach me|tell me|explain|yes|no|more|continue|what about)\b/i.test(lastUserMessage.trim());
-  
-  const needsSearch = isExplicitLookup && !isFollowUp;
-  
-  if (needsSearch) {
-    // Clean search term
-    const cleanQuery = lastUserMessage
-      .replace(/who is|what is|tell me about|search for|lookup|who was|what was|where is/gi, "")
-      .trim();
-    
-    if (cleanQuery.length > 2) {
-      const matchedTitle = await searchWikipedia(cleanQuery);
-      if (matchedTitle) {
-        // Reject irrelevant titles (e.g., query "teach me" returning manga titles)
-        const queryWords = cleanQuery.toLowerCase().split(" ");
-        const titleMatchesQuery = queryWords.some((word: string) =>
-          word.length > 3 && matchedTitle.toLowerCase().includes(word)
-        );
 
-        if (titleMatchesQuery) {
-          const summaryData = await fetchWikipediaSummary(matchedTitle);
-          if (summaryData?.extract) {
-            wikiCardData = {
-              title: summaryData.title,
-              imageUrl: summaryData.imageUrl || null,
-              description: summaryData.description || "",
-              extract: summaryData.extract,
-              wikiUrl: summaryData.wikiUrl
-            };
-            wikiContext = `\n\n[LIVE SEARCH DATA FOR "${summaryData.title}"]:
+  // Detect explicit search commands like "pls search...", "please lookup...", "search who is..."
+  const explicitSearchMatch = lastUserMessage.match(/(?:pls|please|can you)?\s*(?:search|search for|lookup|google)\s+(.+)/i);
+
+  let searchQuery = "";
+  let forceSearch = false;
+
+  if (explicitSearchMatch) {
+    // Extract query after the search command
+    searchQuery = explicitSearchMatch[1].trim();
+    forceSearch = true;
+  } else {
+    // Fallback to auto-extracted topic
+    searchQuery = lastUserMessage
+      .replace(/who is|what is|tell me about|who was|what was|where is|do you know|know about|\?/gi, "")
+      .trim();
+  }
+
+  // Run search if explicitly requested OR if auto-search conditions are met
+  if (forceSearch || (searchQuery.length >= 3 && !/^(hi|hello|hey|sasa|hola|thanks|ok|yes|no)$/i.test(searchQuery))) {
+    const matchedTitle = await searchWikipedia(searchQuery);
+    if (matchedTitle) {
+      const summaryData = await fetchWikipediaSummary(matchedTitle);
+      if (summaryData && summaryData.extract) {
+        wikiCardData = {
+          title: summaryData.title,
+          imageUrl: summaryData.imageUrl || null,
+          description: summaryData.description || "",
+          extract: summaryData.extract,
+          wikiUrl: summaryData.wikiUrl
+        };
+        wikiContext = `\n\n[LIVE SEARCH DATA FOR "${summaryData.title}"]:
 Description: ${summaryData.description}
-Summary: ${summaryData.extract}`;
-          }
-        }
+Summary: ${summaryData.extract}
+Source: ${summaryData.wikiUrl}`;
       }
     }
   }
@@ -335,12 +347,17 @@ Summary: ${summaryData.extract}`;
   // 3. Combine into master system prompt
   const SYSTEM_PROMPT: Message = {
     role: "system",
-    content: `You are Scorpio, an intelligent, sharp, and factual AI built by Codedwaves.
-Factual Accuracy: When live search data is provided in context, you MUST use it as the source of truth. Never misidentify real people, YouTubers, historical figures, or public events as fictional characters.
+    content: `You are Scorpio, an intelligent and accurate AI built by Codedwaves.
+Search Requests: When the user explicitly asks you to search for something, use the provided live search context to give a direct, accurate answer.
+Factual Accuracy: Always prioritize live search data over internal assumptions for real-world figures, companies, and CEOs.
 Structured Learning: If the user asks to learn about a topic or person, give a clear overview, key facts, and offer to dive deeper.
-Thinking Rules: Keep internal thinking inside  tags strictly under 2-3 sentences max.
+Thinking Rules: Keep internal thoughts inside  tags strictly under 2-3 sentences max.
 Multi-lingual & Slang Aware: Respond in the exact language/slang used by the user.
-Grammar: If Dictionary context is provided, use it for accurate grammatical information.${wikiContext}`
+Grammar: If Dictionary context is provided, use it for accurate grammatical information.
+
+Code Writing: When writing code, open the backtick code block immediately with the appropriate language identifier (e.g. \`\`\`typescript). Write modular, production-ready, clean code without repetitive comments or unnecessary introductory text.
+
+When live search/Wikipedia data is available, use it to provide accurate, well-written content. Focus on delivering the main information clearly and comprehensively. Do not manually append a Sources section or Search Summary header in plain text - the UI will handle rendering sources via structured data.${wikiContext}`
   };
 
   const payloadMessages = [SYSTEM_PROMPT, ...messages.slice(-6)];
@@ -365,7 +382,7 @@ Grammar: If Dictionary context is provided, use it for accurate grammatical info
     return await processStream(response, wikiCardData);
   } catch (err3) {
     console.error("All AI Providers failed.", err3);
-    return new Response(JSON.stringify({ error: "All servers busy. Please try again shortly." }), {
+    return new Response(JSON.stringify({ error: "All AI services are currently unavailable. Please check your API keys configuration or try again later." }), {
       status: 503,
       headers: { "Content-Type": "application/json" }
     });

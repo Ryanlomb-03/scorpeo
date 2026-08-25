@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { codeToHtml } from 'shiki';
+import { Download, Copy, Check, Code2, Loader2 } from 'lucide-react';
 
 interface StreamingCodeBlockProps {
   streamContent: string;
@@ -12,69 +13,91 @@ interface StreamingCodeBlockProps {
   onStartMessage?: string;
 }
 
+const formatLanguage = (lang: string) => {
+  if (!lang || lang === 'code') return 'Code';
+  const l = lang.toLowerCase().trim();
+  if (l === 'js' || l === 'javascript') return 'JavaScript';
+  if (l === 'ts' || l === 'typescript') return 'TypeScript';
+  if (l === 'py' || l === 'python') return 'Python';
+  if (l === 'cpp' || l === 'c++') return 'C++';
+  if (l === 'cs' || l === 'csharp' || l === 'c#') return 'C#';
+  if (l === 'html') return 'HTML';
+  if (l === 'css') return 'CSS';
+  if (l === 'json') return 'JSON';
+  if (l === 'jsx') return 'JSX';
+  if (l === 'tsx') return 'TSX';
+  return lang.charAt(0).toUpperCase() + lang.slice(1).toLowerCase();
+};
+
 export default function StreamingCodeBlock({ 
   streamContent, 
   language, 
-  theme = 'github-dark',
+  theme = 'dracula',
   className = '',
   isComplete = false,
-  onStartMessage = 'Generating code...'
 }: StreamingCodeBlockProps) {
   const [highlightedCode, setHighlightedCode] = useState('');
-  const [isHighlighting, setIsHighlighting] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [hasOverflow, setHasOverflow] = useState(false);
   const codeRef = useRef<HTMLDivElement>(null);
-  const highlightTimeoutRef = useRef<NodeJS.Timeout>();
+  const lastHighlightTimeRef = useRef<number>(0);
+  const pendingTimeoutRef = useRef<NodeJS.Timeout>();
 
+  // Check horizontal overflow to conditionally render side triangle icons
   useEffect(() => {
-    // Debounced highlighting to avoid excessive re-rendering during streaming
-    if (highlightTimeoutRef.current) {
-      clearTimeout(highlightTimeoutRef.current);
-    }
-
-    highlightTimeoutRef.current = setTimeout(async () => {
-      if (!streamContent) return;
-
-      try {
-        setIsHighlighting(true);
-        const html = await codeToHtml(streamContent, {
-          lang: language,
-          theme: theme,
-        });
-        setHighlightedCode(html);
-      } catch (error) {
-        console.error('Error highlighting streaming code:', error);
-        // Fallback for streaming
-        setHighlightedCode(`<pre><code>${escapeHtml(streamContent)}</code></pre>`);
-      } finally {
-        setIsHighlighting(false);
-      }
-    }, 100); // 100ms debounce during streaming
-
-    return () => {
-      if (highlightTimeoutRef.current) {
-        clearTimeout(highlightTimeoutRef.current);
+    const checkOverflow = () => {
+      if (codeRef.current) {
+        setHasOverflow(codeRef.current.scrollWidth > codeRef.current.clientWidth + 2);
       }
     };
-  }, [streamContent, language, theme]);
 
-  // Final highlight when streaming completes
+    checkOverflow();
+    const timer = setTimeout(checkOverflow, 80);
+    window.addEventListener('resize', checkOverflow);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', checkOverflow);
+    };
+  }, [streamContent, highlightedCode]);
+
   useEffect(() => {
-    if (isComplete && streamContent) {
-      const finalHighlight = async () => {
-        try {
-          const html = await codeToHtml(streamContent, {
-            lang: language,
-            theme: theme,
-          });
+    if (!streamContent) return;
+
+    let isMounted = true;
+
+    const doHighlight = async () => {
+      try {
+        const lang = language && language.trim() !== '' ? language : 'plaintext';
+        const html = await codeToHtml(streamContent, {
+          lang,
+          theme: 'dracula',
+        });
+        if (isMounted) {
           setHighlightedCode(html);
-        } catch (error) {
-          console.error('Error in final highlight:', error);
+          lastHighlightTimeRef.current = Date.now();
         }
-      };
-      finalHighlight();
+      } catch (error) {
+        console.error('Error in Shiki highlighting:', error);
+      }
+    };
+
+    const now = Date.now();
+    const elapsed = now - lastHighlightTimeRef.current;
+
+    if (elapsed >= 60 || isComplete) {
+      doHighlight();
+    } else {
+      if (pendingTimeoutRef.current) clearTimeout(pendingTimeoutRef.current);
+      pendingTimeoutRef.current = setTimeout(() => {
+        if (isMounted) doHighlight();
+      }, 60 - elapsed);
     }
-  }, [isComplete, streamContent, language, theme]);
+
+    return () => {
+      isMounted = false;
+      if (pendingTimeoutRef.current) clearTimeout(pendingTimeoutRef.current);
+    };
+  }, [streamContent, language, isComplete]);
 
   const handleCopy = async () => {
     try {
@@ -86,81 +109,113 @@ export default function StreamingCodeBlock({
     }
   };
 
-  const escapeHtml = (text: string) => {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+  const handleDownload = () => {
+    const extension = language === 'typescript' ? 'ts' :
+                      language === 'javascript' ? 'js' :
+                      language === 'python' ? 'py' :
+                      language === 'jsx' ? 'jsx' :
+                      language === 'tsx' ? 'tsx' :
+                      language === 'css' ? 'css' :
+                      language === 'html' ? 'html' : 'txt';
+
+    const blob = new Blob([streamContent], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `code.${extension}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
-  const showStartMessage = !streamContent || streamContent.trim().length < 10;
-
   return (
-    <div className={`relative group ${className}`}>
-      <div 
-        className="rounded-2xl overflow-hidden border border-neutral-800 bg-[#121212] transition-all duration-200"
-      >
-        {/* Sticky header with language and copy button */}
-        <div 
-          className="sticky top-0 z-10 flex items-center justify-between px-4 py-2 bg-neutral-900/80 border-b border-neutral-800/60"
-        >
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-neutral-400 capitalize">
-              {language || "code"}
-            </span>
-          </div>
+    <div className={`relative group my-4 rounded-xl border border-neutral-800/60 bg-[#1c1c1e] overflow-hidden ${className}`}>
+      {/* Header Bar */}
+      <div className="flex items-center justify-between px-4 py-2.5 bg-[#1c1c1e] border-b border-neutral-800/60 select-none">
+        <div className="flex items-center gap-2">
+          {!isComplete || !streamContent ? (
+            <Loader2 className="w-4 h-4 text-neutral-400 animate-spin" />
+          ) : (
+            <Code2 className="w-4 h-4 text-neutral-400" />
+          )}
+          <span className="text-sm font-semibold text-neutral-200">
+            {formatLanguage(language)}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleDownload}
+            className={`p-1 transition-colors rounded ${
+              !isComplete || !streamContent
+                ? 'text-neutral-600 cursor-not-allowed opacity-40'
+                : 'text-neutral-400 hover:text-white'
+            }`}
+            disabled={!isComplete || !streamContent}
+            title={!isComplete ? 'Generating code...' : 'Download Code'}
+          >
+            <Download className="w-4 h-4" />
+          </button>
           <button
             onClick={handleCopy}
-            className="flex items-center gap-1.5 rounded-lg bg-neutral-800/80 px-2.5 py-1 text-xs text-neutral-300 hover:bg-neutral-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={showStartMessage}
+            className={`p-1 transition-colors rounded ${
+              !isComplete || !streamContent
+                ? 'text-neutral-600 cursor-not-allowed opacity-40'
+                : 'text-neutral-400 hover:text-white'
+            }`}
+            disabled={!isComplete || !streamContent}
+            title={!isComplete ? 'Generating code...' : 'Copy Code'}
           >
             {copied ? (
-              <>
-                <svg width="13" height="13" fill="currentColor" viewBox="0 0 16 16" className="text-green-400">
-                  <path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 0 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z"/>
-                </svg>
-                <span>Copied</span>
-              </>
+              <Check className="w-4 h-4 text-emerald-400" />
             ) : (
-              <>
-                <svg width="13" height="13" fill="currentColor" viewBox="0 0 16 16">
-                  <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
-                  <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
-                </svg>
-                <span>Copy</span>
-              </>
+              <Copy className="w-4 h-4" />
             )}
           </button>
         </div>
-
-        {/* Code content */}
-        <div 
-          ref={codeRef}
-          className="overflow-x-auto min-h-[60px]"
-          style={{
-            fontFamily: '"JetBrains Mono", monospace',
-            fontSize: '0.875rem',
-            lineHeight: '1.7',
-          }}
-        >
-          {showStartMessage ? (
-            <div className="flex items-center justify-center py-8 text-gray-500">
-              <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-600 border-t-gray-400 mr-3" />
-              <span className="text-sm">{onStartMessage}</span>
-            </div>
-          ) : (
-            <div 
-              dangerouslySetInnerHTML={{ __html: highlightedCode }}
-              className="shiki transition-opacity duration-200"
-              style={{
-                background: 'transparent',
-                padding: '1rem',
-                margin: 0,
-                opacity: isHighlighting ? 0.7 : 1,
-              }}
-            />
-          )}
-        </div>
       </div>
+
+      {/* Code Content Container (Scrollbar reaches bottom at exact level with triangles) */}
+      <div
+        ref={codeRef}
+        className="code-scrollbar overflow-x-auto mx-5 pt-3.5 pb-2 text-xs sm:text-sm font-mono leading-[1.7] text-neutral-200"
+        style={{
+          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "JetBrains Mono", monospace',
+        }}
+      >
+        {highlightedCode ? (
+          <div
+            dangerouslySetInnerHTML={{ __html: highlightedCode }}
+            className="shiki transition-opacity duration-150"
+            style={{
+              background: 'transparent',
+              padding: 0,
+              margin: 0,
+            }}
+          />
+        ) : (
+          <pre style={{ margin: 0, padding: 0, background: 'transparent' }}>
+            <code style={{ fontFamily: 'inherit' }}>{streamContent}</code>
+          </pre>
+        )}
+      </div>
+
+      {/* Side Icon Indicators (Only rendered when code overflows horizontally) */}
+      {hasOverflow && (
+        <>
+          <div className="absolute left-1 bottom-0 h-3.5 flex items-center z-10 pointer-events-none text-neutral-400 opacity-60">
+            <svg xmlns="http://www.w3.org/2000/svg" height="14" viewBox="0 -960 960 960" width="14" fill="#e3e3e3">
+              <path d="M640-200 200-480l440-280v560Z"/>
+            </svg>
+          </div>
+
+          <div className="absolute right-1 bottom-0 h-3.5 flex items-center z-10 pointer-events-none text-neutral-400 opacity-60">
+            <svg xmlns="http://www.w3.org/2000/svg" height="14" viewBox="0 -960 960 960" width="14" fill="#e3e3e3" style={{ transform: 'rotate(180deg)' }}>
+              <path d="M640-200 200-480l440-280v560Z"/>
+            </svg>
+          </div>
+        </>
+      )}
     </div>
   );
 }

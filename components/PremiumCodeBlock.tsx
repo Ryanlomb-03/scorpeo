@@ -78,12 +78,11 @@ export default function PremiumCodeBlock({
           boxShadow: '0 1px 1px rgba(0,0,0,0.15), 0 8px 24px rgba(0,0,0,0.18)',
         }}
       >
-        {/* Premium sticky header */}
+        {/* Premium header */}
         <div 
-          className="sticky top-0 z-10 flex items-center justify-between px-4 py-3"
+          className="flex items-center justify-between px-4 py-3"
           style={{
             background: 'rgba(13, 17, 23, 0.95)',
-            borderBottom: '1px solid rgba(255,255,255,0.06)',
             backdropFilter: 'blur(8px)',
             height: '44px',
           }}
@@ -139,7 +138,7 @@ export default function PremiumCodeBlock({
         {/* Code content with optional line numbers */}
         <div 
           ref={codeRef}
-          className="overflow-x-auto"
+          className="code-scrollbar overflow-x-auto"
           style={{
             fontFamily: '"JetBrains Mono", monospace',
             fontSize: '14px',

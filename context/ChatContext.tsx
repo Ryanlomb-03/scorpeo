@@ -1,12 +1,14 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from "react";
+import { isSimpleGreeting, getLocalGreetingResponse } from "@/lib/localGreetings";
 
 export interface Message {
   id: string;
   conversationId: string;
   role: "user" | "assistant";
   content: string;
+  thinking?: string;
   isLoading?: boolean;
   loadingPhase?: number;
   createdAt?: string;
@@ -26,6 +28,7 @@ export interface Conversation {
   userId: string;
   title: string;
   is_pinned?: boolean;
+  isGreeting?: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -55,6 +58,34 @@ function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).substring(2, 15);
 }
 
+/**
+ * Generate a branded, cryptographically secure chat ID
+ * Format: scpo + 16 random URL-safe characters (20 total)
+ * Uses Web Crypto API for secure randomness
+ */
+function generateChatId(): string {
+  const prefix = 'scpo';
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const randomBytes = new Uint8Array(16);
+  
+  // Use Web Crypto API for secure randomness
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    crypto.getRandomValues(randomBytes);
+  } else {
+    // Fallback for environments without Web Crypto (shouldn't happen in modern browsers)
+    for (let i = 0; i < 16; i++) {
+      randomBytes[i] = Math.floor(Math.random() * 256);
+    }
+  }
+  
+  let result = prefix;
+  for (let i = 0; i < 16; i++) {
+    result += chars[randomBytes[i] % chars.length];
+  }
+  
+  return result;
+}
+
 export function ChatProvider({ children }: { children: ReactNode }) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
@@ -65,6 +96,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const guestUserId = useRef<string>("guest-user");
   const updateBufferRef = useRef<string>("");
   const animationFrameId = useRef<number | null>(null);
+  const thinkingBufferRef = useRef<string>("");
+  const textBufferRef = useRef<string>("");
+  const lastUpdateTimeRef = useRef<number>(0);
   
   // Generate or retrieve guest user ID
   useEffect(() => {
@@ -97,7 +131,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const createConversation = async (): Promise<string> => {
-    const id = generateId();
+    const id = generateChatId();
     const newConv: Conversation = {
       id,
       userId: guestUserId.current,
@@ -146,7 +180,43 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const generateAndTypeTitle = async (id: string, firstMessage: string) => {
+  /**
+   * Generate a provisional title immediately from the first message
+   * This is a fast, deterministic method that doesn't require AI
+   */
+  const generateProvisionalTitle = (message: string): string => {
+    const trimmed = message.trim();
+    const words = trimmed.split(/\s+/).slice(0, 5); // Take first 5 words
+    
+    // If message is very short, use it directly
+    if (words.length <= 3) {
+      return trimmed.length > 30 ? trimmed.substring(0, 30) + '...' : trimmed;
+    }
+    
+    // Capitalize first letter of each word
+    const title = words
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(' ');
+    
+    return title.length > 40 ? title.substring(0, 40) + '...' : title;
+  };
+
+  const generateAndTypeTitle = async (id: string, firstMessage: string, isUpdate: boolean = false) => {
+    // Set provisional title immediately
+    const provisionalTitle = generateProvisionalTitle(firstMessage);
+    
+    if (!isUpdate) {
+      setConversations(prev => {
+        if (!prev.find(c => c.id === id)) return prev;
+        return prev.map(c => c.id === id ? { ...c, title: provisionalTitle, isGreeting: false } : c);
+      });
+      
+      setCurrentConversation(prev =>
+        prev?.id === id ? { ...prev, title: provisionalTitle, isGreeting: false } : prev
+      );
+    }
+
+    // Generate AI title in background (non-blocking)
     try {
       const res = await fetch("/api/title", {
         method: "POST",
@@ -154,7 +224,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ message: firstMessage })
       });
       const data = await res.json();
-      const finalTitle = data.title || "New Chat";
+      const finalTitle = data.title || provisionalTitle;
+      const isGreeting = data.isGreeting || false;
 
       // Update conversation title in localStorage immediately
       setTimeout(() => {
@@ -164,41 +235,143 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             const parsed = JSON.parse(cached);
             if (Array.isArray(parsed)) {
               localStorage.setItem("guestConversations", JSON.stringify(
-                parsed.map((c: Conversation) => c.id === id ? { ...c, title: finalTitle } : c)
+                parsed.map((c: Conversation) => c.id === id ? { ...c, title: finalTitle, isGreeting } : c)
               ));
             }
           } catch {}
         }
       }, 0);
 
-      // Typewriter effect
-      let currentTitle = "";
-      for (let i = 0; i < finalTitle.length; i++) {
-        currentTitle += finalTitle[i];
-        
+      // Update UI with final title (skip typewriter if it's an update)
+      if (!isUpdate) {
         setConversations(prev => {
           if (!prev.find(c => c.id === id)) return prev;
-          return prev.map(c => c.id === id ? { ...c, title: currentTitle } : c);
+          return prev.map(c => c.id === id ? { ...c, title: finalTitle, isGreeting } : c);
         });
         
         setCurrentConversation(prev => 
-          prev?.id === id ? { ...prev, title: currentTitle } : prev
+          prev?.id === id ? { ...prev, title: finalTitle, isGreeting } : prev
         );
-        
-        await new Promise(r => setTimeout(r, 50));
       }
-    } catch (e) {
-      console.error("Failed to generate and type title:", e);
+    } catch (error) {
+      console.error("Failed to generate AI title, keeping provisional title:", error);
+      // Keep provisional title on failure - don't break the chat
     }
   };
 
   const sendMessage = async (content: string, onChunk?: (chunk: string) => void) => {
     setIsSending(true);
     
+    // Check if this is the first message and a simple greeting - respond locally in the native language to save tokens
+    const isFirstMessage = messages.length === 0;
+    if (isFirstMessage && isSimpleGreeting(content)) {
+      let convId = currentConversation?.id;
+      const isNewConversation = !convId;
+      
+      if (!convId) {
+        convId = generateId();
+        const newConv: Conversation = {
+          id: convId,
+          userId: guestUserId.current,
+          title: "", // Start empty for skeleton loader
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+        setConversations(prev => Array.isArray(prev) ? [newConv, ...prev] : [newConv]);
+        setCurrentConversation(newConv);
+        setPendingConversationId(convId);
+        
+        setTimeout(() => {
+          const cached = localStorage.getItem("guestConversations");
+          let existing: Conversation[] = [];
+          if (cached) {
+            try {
+              const parsed = JSON.parse(cached);
+              existing = Array.isArray(parsed) ? parsed : [];
+            } catch {
+              existing = [];
+            }
+          }
+          localStorage.setItem("guestConversations", JSON.stringify([newConv, ...existing]));
+        }, 0);
+      }
+      
+      // Add user message
+      const userId = generateId();
+      const userMessage: Message = {
+        id: userId,
+        conversationId: convId,
+        role: "user",
+        content
+      };
+      setMessages(prev => [...prev, userMessage]);
+      
+      // Add AI placeholder with loading state
+      const assistantId = generateId();
+      setMessages(prev => [...prev, {
+        id: assistantId,
+        conversationId: convId,
+        role: "assistant",
+        content: "",
+        isLoading: true
+      }]);
+      
+      // Save to localStorage
+      setTimeout(() => {
+        const finalMessages = [...messages, userMessage];
+        localStorage.setItem(`guestMessages_${convId}`, JSON.stringify(finalMessages));
+      }, 0);
+      
+      // Fetch dynamic greeting (uses local dictionary for 35+ languages, or Token Harbor for any other language)
+      let greetingResponse = getLocalGreetingResponse(content);
+      try {
+        const greetRes = await fetch("/api/greeting", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: content })
+        });
+        if (greetRes.ok) {
+          const greetData = await greetRes.json();
+          if (greetData.greeting) {
+            greetingResponse = greetData.greeting;
+          }
+        }
+      } catch (err) {
+        console.warn("Greeting fetch fallback to local:", err);
+      }
+
+      setMessages(prev =>
+        prev.map(m =>
+          m.id === assistantId
+            ? { ...m, content: greetingResponse, isLoading: false }
+            : m
+        )
+      );
+      
+      // Generate dynamic title via Token Harbor even for greetings instead of hardcoding "Greeting"
+      if (isNewConversation) {
+        generateAndTypeTitle(convId, content);
+      }
+      
+      // Update localStorage with final message
+      setTimeout(() => {
+        const finalMessages = [...messages, userMessage, { id: assistantId, conversationId: convId, role: "assistant", content: greetingResponse }];
+        localStorage.setItem(`guestMessages_${convId}`, JSON.stringify(finalMessages));
+      }, 0);
+      
+      setIsSending(false);
+      setPendingConversationId(null);
+      return;
+    }
+    
+    // Normal AI response for non-greeting messages
     let convId = currentConversation?.id;
     const isNewConversation = !convId;
     
     if (!convId) {
+      // Show loading state for new conversation
+      setLoading(true);
+      
       convId = generateId();
       // Set ALL local state immediately before any async
       const newConv: Conversation = {
@@ -226,6 +399,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         }
         localStorage.setItem("guestConversations", JSON.stringify([newConv, ...existing]));
       }, 0);
+      
+      // Don't wait - let navigation happen immediately
+      setLoading(false);
     }
     
     // Add user message immediately
@@ -251,19 +427,29 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     // Reset streaming refs
     updateBufferRef.current = "";
     animationFrameId.current = null;
+    thinkingBufferRef.current = "";
+    textBufferRef.current = "";
+    lastUpdateTimeRef.current = 0;
+    const BATCH_INTERVAL = 50; // Batch updates every 50ms for smooth rendering
 
-    // Throttled update function using requestAnimationFrame
-    const flushUpdate = (id: string, cardData: any) => {
+    // Throttled update function using requestAnimationFrame with batching
+    const flushUpdate = (id: string, cardData: any, thinking: string, newsData?: any) => {
       setMessages(prev =>
         prev.map(m =>
-          m.id === id ? { ...m, content: updateBufferRef.current, wikiCardData: cardData } : m
+          m.id === id ? { ...m, content: textBufferRef.current, wikiCardData: cardData, newsCardData: newsData, thinking } : m
         )
       );
     };
 
     // Call real AI API
     try {
-      if (isNewConversation) {
+      // Check if this is the second message and current title is a greeting - update title
+      const currentConv = conversations.find(c => c.id === convId);
+      const isSecondMessage = messages.length === 1;
+      if (isSecondMessage && currentConv?.isGreeting) {
+        // Regenerate title with new context (second message provides context)
+        generateAndTypeTitle(convId, content, true); // true = isUpdate, skip typewriter
+      } else if (isNewConversation) {
         // Start background title generation with typewriter effect
         generateAndTypeTitle(convId, content);
       }
@@ -291,6 +477,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       let isFirstChunk = true;
       let buffer = "";
       let wikiCardData: any = null;
+      let thinkingContent = "";
 
       while (true) {
         const { done, value } = await reader.read();
@@ -314,28 +501,53 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             console.error("Failed to parse wiki card data:", e);
           }
         }
+
+        // Parse thinking markers [THINKING_START]...[THINKING_END]
+        // Extract thinking content from the current chunk first
+        const chunkThinkingMatch = chunk.match(/\[THINKING_START\]([\s\S]*?)\[THINKING_END\]/g);
+        if (chunkThinkingMatch) {
+          chunkThinkingMatch.forEach(match => {
+            const content = match.replace(/\[THINKING_START\]([\s\S]*?)\[THINKING_END\]/, '$1');
+            thinkingContent += content;
+            thinkingBufferRef.current = thinkingContent;
+          });
+        }
+        
+        // Remove ALL thinking markers from visible content
+        const thinkingRegex = /\[THINKING_START\]([\s\S]*?)\[THINKING_END\]/g;
+        buffer = buffer.replace(thinkingRegex, '');
+        
+        // Remove ALL wiki card markers from visible content
+        const wikiRegex = /\[WIKI_CARD_START\]([\s\S]*?)\[WIKI_CARD_END\]/g;
+        buffer = buffer.replace(wikiRegex, '');
         
         assistantContent = buffer;
+        textBufferRef.current = assistantContent;
 
         // Replace {username} placeholder on the fly if needed
         let displayContent = assistantContent;
         displayContent = displayContent.replace(/{username}/gi, "Guest");
 
-        // Update buffer and schedule throttled UI update
+        // Update buffer and schedule throttled UI update with batching
         updateBufferRef.current = displayContent;
+
+        const now = Date.now();
+        const timeSinceLastUpdate = now - lastUpdateTimeRef.current;
 
         // As soon as the first chunk arrives, hide the pulsing dot and show the typed text
         if (isFirstChunk) {
           isFirstChunk = false;
           setMessages(prev => prev.map(m =>
-            m.id === assistantId ? { ...m, content: displayContent, isLoading: false, wikiCardData } : m
+            m.id === assistantId ? { ...m, content: displayContent, isLoading: false, wikiCardData, thinking: thinkingBufferRef.current } : m
           ));
-        } else {
-          // Throttled update using requestAnimationFrame
+          lastUpdateTimeRef.current = now;
+        } else if (timeSinceLastUpdate >= BATCH_INTERVAL) {
+          // Batched update - only update if enough time has passed
           if (!animationFrameId.current) {
             animationFrameId.current = requestAnimationFrame(() => {
-              flushUpdate(assistantId, wikiCardData);
+              flushUpdate(assistantId, wikiCardData, thinkingBufferRef.current);
               animationFrameId.current = null;
+              lastUpdateTimeRef.current = Date.now();
             });
           }
         }
@@ -344,9 +556,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       // Final replacement just in case
       assistantContent = assistantContent.replace(/{username}/gi, "Guest");
 
+      // Remove any remaining YouTube video markers from final content
+      const youtubeRegex = /\[YOUTUBE_VIDEO_START\]([\s\S]*?)\[YOUTUBE_VIDEO_END\]/g;
+      assistantContent = assistantContent.replace(youtubeRegex, '');
+
       // Update message with final AI response and make sure loading is disabled
       setMessages(prev => prev.map(m => 
-        m.id === assistantId ? { ...m, content: assistantContent, isLoading: false, wikiCardData } : m
+        m.id === assistantId ? { ...m, content: assistantContent, isLoading: false, wikiCardData, thinking: thinkingBufferRef.current } : m
       ));
       
       // Save messages to localStorage immediately
@@ -356,7 +572,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           conversationId: convId,
           role: "assistant",
           content: assistantContent,
-          wikiCardData
+          wikiCardData,
+          thinking: thinkingBufferRef.current
         }];
         localStorage.setItem(`guestMessages_${convId}`, JSON.stringify(finalMessages));
       }, 0);

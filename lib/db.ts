@@ -1,8 +1,6 @@
-import { createClient } from '@supabase/supabase-js';
+// Local storage-based caching (no database required)
+// Conversations are stored in localStorage as 'guestConversations'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-
-export const supabase = createClient(supabaseUrl, supabaseKey);
+export const supabase = null;
 
 export default supabase;

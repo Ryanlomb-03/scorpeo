@@ -28,6 +28,264 @@
   font-display: swap;
 }
 
+/* Playfair Display - Serif */
+@font-face {
+  font-family: 'Playfair Display';
+  src: url('/fonts/Playfair_Display/static/PlayfairDisplay-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Playfair Display';
+  src: url('/fonts/Playfair_Display/static/PlayfairDisplay-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Playfair Display';
+  src: url('/fonts/Playfair_Display/static/PlayfairDisplay-SemiBold.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Playfair Display';
+  src: url('/fonts/Playfair_Display/static/PlayfairDisplay-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Lora - Serif */
+@font-face {
+  font-family: 'Lora';
+  src: url('/fonts/Lora/static/Lora-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Lora';
+  src: url('/fonts/Lora/static/Lora-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Lora';
+  src: url('/fonts/Lora/static/Lora-SemiBold.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Lora';
+  src: url('/fonts/Lora/static/Lora-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Caveat - Handwritten */
+@font-face {
+  font-family: 'Caveat';
+  src: url('/fonts/Caveat/Caveat-VariableFont_wght.ttf') format('truetype');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Kalam - Handwritten */
+@font-face {
+  font-family: 'Kalam';
+  src: url('/fonts/Kalam/static/Kalam-Light.ttf') format('truetype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Kalam';
+  src: url('/fonts/Kalam/static/Kalam-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Kalam';
+  src: url('/fonts/Kalam/static/Kalam-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Patrick Hand - Handwritten */
+@font-face {
+  font-family: 'Patrick Hand';
+  src: url('/fonts/Patrick_Hand/static/PatrickHand-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Roboto - Sans-Serif */
+@font-face {
+  font-family: 'Roboto';
+  src: url('/fonts/Roboto/Roboto-Light.ttf') format('truetype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Roboto';
+  src: url('/fonts/Roboto/Roboto-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Roboto';
+  src: url('/fonts/Roboto/Roboto-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Roboto';
+  src: url('/fonts/Roboto/Roboto-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Open Sans - Sans-Serif */
+@font-face {
+  font-family: 'Open Sans';
+  src: url('/fonts/Open_Sans/static/OpenSans-Light.ttf') format('truetype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Open Sans';
+  src: url('/fonts/Open_Sans/static/OpenSans-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Open Sans';
+  src: url('/fonts/Open_Sans/static/OpenSans-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Open Sans';
+  src: url('/fonts/Open_Sans/static/OpenSans-SemiBold.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Open Sans';
+  src: url('/fonts/Open_Sans/static/OpenSans-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* JetBrains Mono - Monospace */
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/jetbrains-mono-regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/jetbrains-mono-medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Local Inter Font */
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/inter-regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/inter-medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/inter-semibold.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Google Sans Font */
+@font-face {
+  font-family: 'Google Sans';
+  src: url('/fonts/Google_Sans/static/GoogleSans-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Google Sans';
+  src: url('/fonts/Google_Sans/static/GoogleSans-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Google Sans';
+  src: url('/fonts/Google_Sans/static/GoogleSans-SemiBold.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Google Sans';
+  src: url('/fonts/Google_Sans/static/GoogleSans-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* Local JetBrains Mono Font */
 @font-face {
   font-family: 'JetBrains Mono';
@@ -48,6 +306,18 @@
 @layer base {
   html {
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+  .theme {
+    --font-heading: var(--font-sans);
+    --font-sans: var(--font-sans);
+  }
+  * {
+    border-color: hsl(var(--border));
+    outline-color: hsl(var(--ring) / 0.5);
+  }
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
   }
 }
 
@@ -77,6 +347,7 @@
 html,
 body {
   max-width: 100vw;
+  overflow-x: hidden;
 }
 
 body {
@@ -138,7 +409,6 @@ pre::-webkit-scrollbar-thumb:hover {
   background-clip: padding-box;
   border-radius: 999px;
 }
-
 
 .ai-ring {
   width: 24px;
@@ -403,15 +673,15 @@ html {
   .katex {
     font-size: 0.85em !important;
   }
-  
+
   .katex-display {
     margin: 0.5em 0 !important;
   }
-  
+
   .katex-display::-webkit-scrollbar {
     height: 4px;
   }
-  
+
   body {
     overflow-x: hidden;
   }
@@ -511,4 +781,188 @@ span.token.keyword {
 .shiki span[style*="color:#565f89"] {
   color: #6272a4 !important; /* Muted Grey */
   font-style: italic !important;
+}
+
+/* Step number styling for semantic markers */
+.step-number {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+/* Semantic marker styling */
+.semantic-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 6px;
+  vertical-align: middle;
+  font-size: 14px;
+}
+
+.semantic-danger {
+  color: #f43f5e;
+}
+
+.semantic-fatal {
+  color: #dc2626;
+}
+
+.semantic-caution {
+  color: #fbbf24;
+}
+
+.semantic-warning {
+  color: #facc15;
+}
+
+.semantic-note {
+  color: #818cf8;
+}
+
+.semantic-info {
+  color: #38bdf8;
+}
+
+.semantic-success {
+  color: #34d399;
+}
+
+.semantic-error {
+  color: #ef4444;
+}
+
+.semantic-tip {
+  color: #fde047;
+}
+
+.semantic-arrow {
+  color: #9ca3af;
+}
+
+.semantic-ban {
+  color: #f43f5e;
+}
+
+.semantic-zap {
+  color: #fbbf24;
+}
+
+/* Custom syntax highlighting colors for Scorpeo */
+.shiki-token {
+  color: #f8f8f2; /* default white */
+}
+
+.shiki-keyword {
+  color: #ff79c6 !important; /* pink */
+}
+
+.shiki-string {
+  color: #50fa7b !important; /* green */
+}
+
+.shiki-function {
+  color: #8be9fd !important; /* blue */
+}
+
+.shiki-number {
+  color: #ffb86c !important; /* orange */
+}
+
+.shiki-type {
+  color: #bd93f9 !important; /* purple */
+}
+
+.shiki-variable {
+  color: #f8f8f2 !important; /* white */
+}
+
+.shiki-comment {
+  color: #6272a4 !important; /* gray */
+  font-style: italic;
+}
+
+.shiki-operator {
+  color: #f8f8f2 !important; /* white */
+}
+
+.shiki-tag {
+  color: #ff79c6 !important; /* pink for tags */
+}
+
+.shiki-attribute {
+  color: #50fa7b !important; /* green for attributes */
+}
+
+/* Custom scrollbar styling */
+.code-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.code-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.code-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.code-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+.code-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Windows terminal scrollbar - black/invisible */
+.windows-terminal-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.windows-terminal-scroll::-webkit-scrollbar-track {
+  background: #000000;
+}
+
+.windows-terminal-scroll::-webkit-scrollbar-thumb {
+  background: #000000;
+  border-radius: 4px;
+}
+
+.windows-terminal-scroll::-webkit-scrollbar-thumb:hover {
+  background: #1a1a1a;
+}
+
+/* Voice recording waveform animation */
+@keyframes wavePulse {
+  0%, 100% { transform: scaleY(0.25); opacity: 0.5; }
+  50% { transform: scaleY(1); opacity: 1; }
+}
+
+/* Circular dash loader animation */
+@keyframes dash {
+  0% {
+    stroke-dasharray: 1, 200;
+    stroke-dashoffset: 0;
+  }
+  50% {
+    stroke-dasharray: 89, 200;
+    stroke-dashoffset: -35px;
+  }
+  100% {
+    stroke-dasharray: 89, 200;
+    stroke-dashoffset: -124px;
+  }
 }

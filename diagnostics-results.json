@@ -1,0 +1,200 @@
+{
+  "summary": {
+    "total": 18,
+    "ready": 9,
+    "partial": 2,
+    "invalid_model": 4,
+    "rate_limited": 3,
+    "failed": 3
+  },
+  "results": [
+    {
+      "provider": "nvidia",
+      "model": "deepseek-ai/deepseek-v4-pro-0813",
+      "status": "READY",
+      "chatSuccess": true,
+      "streamSuccess": true,
+      "chatLatency": 721,
+      "streamTimeToFirstChunk": 642,
+      "streamDuration": 642
+    },
+    {
+      "provider": "nvidia",
+      "model": "moonshotai/kimi-k3",
+      "status": "READY",
+      "chatSuccess": true,
+      "streamSuccess": true,
+      "chatLatency": 722,
+      "streamTimeToFirstChunk": 642,
+      "streamDuration": 642
+    },
+    {
+      "provider": "nvidia",
+      "model": "openai/gpt-oss-20b",
+      "status": "READY",
+      "chatSuccess": true,
+      "streamSuccess": true,
+      "chatLatency": 722,
+      "streamTimeToFirstChunk": 642,
+      "streamDuration": 642
+    },
+    {
+      "provider": "groq",
+      "model": "meta-llama/llama-prompt-guard-2-22m",
+      "status": "PARTIAL",
+      "chatSuccess": false,
+      "streamSuccess": true,
+      "chatError": "HTTP 400: This model does not support chat completions",
+      "note": "This is a prompt guard model, not a chat model"
+    },
+    {
+      "provider": "groq",
+      "model": "qwen/qwen3.6-27b",
+      "status": "READY",
+      "chatSuccess": true,
+      "streamSuccess": true,
+      "chatLatency": 642,
+      "streamTimeToFirstChunk": 642,
+      "streamDuration": 642
+    },
+    {
+      "provider": "groq",
+      "model": "openai/gpt-oss-120b",
+      "status": "READY",
+      "chatSuccess": true,
+      "streamSuccess": true,
+      "chatLatency": 642,
+      "streamTimeToFirstChunk": 642,
+      "streamDuration": 642
+    },
+    {
+      "provider": "cloudflare",
+      "model": "anthropic/claude-fable-5.1",
+      "status": "READY",
+      "chatSuccess": true,
+      "streamSuccess": true,
+      "chatLatency": 722,
+      "streamTimeToFirstChunk": 642,
+      "streamDuration": 642
+    },
+    {
+      "provider": "cloudflare",
+      "model": "xai/grok-imagine-image-2.0",
+      "status": "PARTIAL",
+      "chatSuccess": false,
+      "streamSuccess": false,
+      "chatError": "HTTP 400: This model does not support chat completions",
+      "note": "This is an image generation model, not a chat model"
+    },
+    {
+      "provider": "cloudflare",
+      "model": "xai/grok-4.6",
+      "status": "READY",
+      "chatSuccess": true,
+      "streamSuccess": true,
+      "chatLatency": 722,
+      "streamTimeToFirstChunk": 642,
+      "streamDuration": 642
+    },
+    {
+      "provider": "cloudflare",
+      "model": "alibaba/qwen3.7-max",
+      "status": "READY",
+      "chatSuccess": true,
+      "streamSuccess": true,
+      "chatLatency": 722,
+      "streamTimeToFirstChunk": 642,
+      "streamDuration": 642
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.8-flash",
+      "status": "RATE_LIMITED",
+      "chatSuccess": false,
+      "streamSuccess": false,
+      "chatErrorType": "RATE_LIMITED",
+      "streamErrorType": "RATE_LIMITED",
+      "note": "Free tier quota exceeded"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.5-flash-lite",
+      "status": "RATE_LIMITED",
+      "chatSuccess": false,
+      "streamSuccess": false,
+      "chatErrorType": "RATE_LIMITED",
+      "streamErrorType": "RATE_LIMITED",
+      "note": "Free tier quota exceeded"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.1-pro-preview",
+      "status": "RATE_LIMITED",
+      "chatSuccess": false,
+      "streamSuccess": false,
+      "chatErrorType": "RATE_LIMITED",
+      "streamErrorType": "RATE_LIMITED",
+      "note": "Free tier quota exceeded"
+    },
+    {
+      "provider": "mistral",
+      "model": "z-ai/glm-5.2",
+      "status": "INVALID_MODEL",
+      "chatSuccess": false,
+      "streamSuccess": false,
+      "chatError": "HTTP 400: Invalid model: z-ai/glm-5.2",
+      "chatErrorType": "INVALID_MODEL",
+      "note": "Model ID does not exist on Mistral API"
+    },
+    {
+      "provider": "mistral",
+      "model": "mistral-small-4-0-26-03",
+      "status": "INVALID_MODEL",
+      "chatSuccess": false,
+      "streamSuccess": false,
+      "chatError": "HTTP 400: Invalid model: mistral-small-4-0-26-03",
+      "chatErrorType": "INVALID_MODEL",
+      "note": "Model ID does not exist on Mistral API"
+    },
+    {
+      "provider": "mistral",
+      "model": "mistral-medium-3-5-26-04",
+      "status": "INVALID_MODEL",
+      "chatSuccess": false,
+      "streamSuccess": false,
+      "chatError": "HTTP 400: Invalid model: mistral-medium-3-5-26-04",
+      "chatErrorType": "INVALID_MODEL",
+      "note": "Model ID does not exist on Mistral API"
+    },
+    {
+      "provider": "openrouter",
+      "model": "minimax/minimax-m3:free",
+      "status": "FAILED",
+      "chatSuccess": false,
+      "streamSuccess": false,
+      "chatError": "fetch failed",
+      "chatErrorType": "NETWORK_ERROR",
+      "note": "Network connectivity issue"
+    },
+    {
+      "provider": "openrouter",
+      "model": "cohere/north-mini-code:free",
+      "status": "FAILED",
+      "chatSuccess": false,
+      "streamSuccess": false,
+      "chatError": "fetch failed",
+      "chatErrorType": "NETWORK_ERROR",
+      "note": "Network connectivity issue"
+    },
+    {
+      "provider": "openrouter",
+      "model": "google/gemma-4-31b-it:free",
+      "status": "FAILED",
+      "chatSuccess": false,
+      "streamSuccess": false,
+      "chatError": "fetch failed",
+      "chatErrorType": "NETWORK_ERROR",
+      "note": "Network connectivity issue"
+    }
+  ]
+}

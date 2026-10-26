@@ -1,9 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import "katex/dist/katex.min.css";
+import 'katex/dist/katex.min.css';
 import { ChatProvider } from "@/context/ChatContext";
 import { SidebarProvider } from "@/context/SidebarContext";
 import LayoutShell from "@/components/LayoutShell";
+import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
   title: "Scorpio",

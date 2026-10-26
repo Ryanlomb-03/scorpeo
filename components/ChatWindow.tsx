@@ -90,7 +90,8 @@ export default function ChatWindow() {
   // Navigate to chat page when pending conversation is created
   useEffect(() => {
     if (pendingConversationId) {
-      router.push(`/chat/${pendingConversationId}`);
+      console.log('Navigating to chat:', pendingConversationId);
+      router.replace(`/chat/${pendingConversationId}`);
     }
   }, [pendingConversationId, router]);
 
@@ -141,19 +142,18 @@ export default function ChatWindow() {
 
   return (
     <div className="flex flex-col flex-1 bg-neutral-900 w-full max-w-full relative">
-      <div className="p-3 sm:p-4 flex items-center gap-3 z-20 relative bg-neutral-900 fixed top-0 left-0 right-0">
+      <div className="p-3 sm:p-4 flex items-center gap-3 z-20 bg-neutral-900 fixed top-0 left-0 right-0 overflow-hidden">
         {isMobile && (
           <button
             onClick={() => setIsSidebarOpen(true)}
             disabled={loading}
-            className={`p-1.5 text-gray-400 hover:text-white rounded-md hover:bg-neutral-800 transition-colors ${loading ? 'opacity-50 pointer-events-none' : ''}`}
+            className={`p-1.5 text-gray-400 hover:text-white rounded-md hover:bg-neutral-800 transition-colors flex-shrink-0 ${loading ? 'opacity-50 pointer-events-none' : ''}`}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
           </button>
         )}
-        <h1 className="text-white text-lg font-semibold" style={{ fontFamily: "var(--font-inter), system-ui, sans-serif" }}>Scorpio</h1>
       </div>
-      <div className="flex-1 flex flex-col min-h-0 w-full max-w-full pt-[56px]">
+      <div className="flex-1 min-w-0 flex flex-col min-h-0 w-full max-w-full overflow-x-hidden pt-[56px]">
         {loading ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="spinner-loader">
@@ -165,7 +165,7 @@ export default function ChatWindow() {
         ) : showChat ? (
           <>
             <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-3 sm:px-6 pt-4 pb-32 scrollbar-thin scrollbar-thumb-neutral-600 scrollbar-track-transparent relative w-full">
-              <div className="max-w-3xl mx-auto w-full">
+              <div className="max-w-3xl mx-auto w-full min-w-0">
                 {messages.map((msg) => (
                   <MessageBubble 
                     key={msg.id} 
@@ -187,13 +187,13 @@ export default function ChatWindow() {
             </div>
           </>
         ) : showGreeting ? (
-          <div className="flex-1 flex flex-col items-center justify-center w-full">
-            <motion.div layout className="w-full max-w-3xl px-4 sm:px-6 mb-4">
-              <p className="text-white text-2xl text-center font-medium">
+          <div className="flex-1 flex flex-col items-center justify-center w-full relative">
+            <motion.div layout className="w-full max-w-5xl px-4 sm:px-6 mb-4">
+              <p className="text-white text-4xl text-center font-normal tracking-tight">
                 <Typewriter text={greeting} />
               </p>
             </motion.div>
-            <motion.div layout className="w-full max-w-3xl px-0 sm:px-6">
+            <motion.div layout className="w-full max-w-3xl mx-auto px-0 sm:px-6 pb-4 bg-neutral-900 relative z-20">
               <ChatInput onSend={handleSendMessage} isAIThinking={isSending} position="center" />
             </motion.div>
           </div>

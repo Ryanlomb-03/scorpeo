@@ -5,6 +5,14 @@ export interface IntentResult {
   keywords: string[];
   language?: string[]; // Detected programming languages
   mode: 'generation' | 'explanation' | 'debugging' | 'chat';
+  suggestedArtifacts?: ArtifactSuggestion[]; // Suggested artifacts to enhance response
+}
+
+export interface ArtifactSuggestion {
+  type: 'image' | 'quiz' | 'clock' | 'windows' | 'install';
+  reason: string;
+  priority: 'high' | 'medium' | 'low';
+  confidence: number;
 }
 
 export class IntentClassifier {
@@ -106,11 +114,47 @@ export class IntentClassifier {
     'brainstorm', 'idea', 'innovative', 'original',
   ];
 
+  // Artifact suggestion patterns
+  private imageKeywords = [
+    'show me', 'visual', 'image', 'picture', 'photo', 'illustration',
+    'medieval', 'ancient', 'history', 'artifact', 'architecture',
+    'landscape', 'portrait', 'map', 'chart', 'graph', 'diagram',
+    'screenshot', 'example', 'demo', 'preview', 'mockup',
+    'what does', 'how does it look', 'appearance', 'design',
+    'castle', 'kingdom', 'warrior', 'knight', 'battle', 'armor',
+    'renaissance', 'greek', 'roman', 'egyptian', 'viking',
+    'clothing', 'weapon', 'building', 'structure', 'monument'
+  ];
+
+  private quizKeywords = [
+    'quiz', 'test', 'assessment', 'practice', 'challenge',
+    'check my knowledge', 'test me', 'evaluate', 'review',
+    'study guide', 'exam', 'question', 'answer'
+  ];
+
+  private clockKeywords = [
+    'time', 'clock', 'what time', 'current time', 'timezone',
+    'what time is it', 'time in', 'now', 'hour', 'minute'
+  ];
+
+  private windowsKeywords = [
+    'show me the output', 'run this', 'execute', 'terminal',
+    'command line', 'bash', 'shell', 'demonstrate', 'simulate',
+    'what happens when', 'output', 'result', 'console'
+  ];
+
+  private installKeywords = [
+    'install', 'setup', 'download', 'npm install', 'pip install',
+    'npm', 'yarn', 'pip', 'brew', 'apt', 'package', 'dependency',
+    'create project', 'init', 'initialize', 'configure'
+  ];
+
   classify(message: string): IntentResult {
     const trimmed = message.trim().toLowerCase();
     const keywords = this.extractKeywords(message);
     const detectedLanguages = this.detectLanguages(message);
     const complexity = this.calculateComplexity(message, keywords);
+    const suggestedArtifacts = this.suggestArtifacts(message, keywords);
     
     // Check for greetings first (high confidence rule-based)
     if (this.isGreeting(trimmed)) {
@@ -119,7 +163,8 @@ export class IntentClassifier {
         complexity: 1,
         confidence: 0.95,
         keywords: keywords.slice(0, 3),
-        mode: 'chat'
+        mode: 'chat',
+        suggestedArtifacts
       };
     }
 
@@ -136,7 +181,8 @@ export class IntentClassifier {
         confidence: 0.99,
         keywords: keywords.slice(0, 5),
         language: detectedLanguages,
-        mode: 'generation'
+        mode: 'generation',
+        suggestedArtifacts
       };
     }
 
@@ -146,7 +192,8 @@ export class IntentClassifier {
         complexity,
         confidence: 0.98,
         keywords: keywords.slice(0, 5),
-        mode: 'debugging'
+        mode: 'debugging',
+        suggestedArtifacts
       };
     }
 
@@ -156,7 +203,8 @@ export class IntentClassifier {
         complexity,
         confidence: 0.95,
         keywords: keywords.slice(0, 5),
-        mode: 'explanation'
+        mode: 'explanation',
+        suggestedArtifacts
       };
     }
 
@@ -228,8 +276,74 @@ export class IntentClassifier {
       confidence: Math.min(0.99, Math.max(0.5, confidence)),
       keywords: keywords.slice(0, 5),
       language: detectedLanguages.length > 0 ? detectedLanguages : undefined,
-      mode
+      mode,
+      suggestedArtifacts
     };
+  }
+
+  private suggestArtifacts(message: string, keywords: string[]): ArtifactSuggestion[] {
+    const suggestions: ArtifactSuggestion[] = [];
+    const lowerMessage = message.toLowerCase();
+
+    // Check for image suggestions
+    const imageScore = this.countKeywords(keywords, this.imageKeywords);
+    if (imageScore >= 2) {
+      suggestions.push({
+        type: 'image',
+        reason: 'User is asking to visualize something that would benefit from an image',
+        priority: 'high',
+        confidence: Math.min(0.9, imageScore / 5)
+      });
+    }
+
+    // Check for quiz suggestions
+    const quizScore = this.countKeywords(keywords, this.quizKeywords);
+    if (quizScore >= 1) {
+      suggestions.push({
+        type: 'quiz',
+        reason: 'User is requesting a quiz or assessment',
+        priority: 'medium',
+        confidence: Math.min(0.85, quizScore / 3)
+      });
+    }
+
+    // Check for clock suggestions
+    const clockScore = this.countKeywords(keywords, this.clockKeywords);
+    if (clockScore >= 1) {
+      suggestions.push({
+        type: 'clock',
+        reason: 'User is asking for time information',
+        priority: 'high',
+        confidence: Math.min(0.95, clockScore / 2)
+      });
+    }
+
+    // Check for windows artifact suggestions
+    const windowsScore = this.countKeywords(keywords, this.windowsKeywords);
+    if (windowsScore >= 1) {
+      suggestions.push({
+        type: 'windows',
+        reason: 'User wants to see terminal output or code execution',
+        priority: 'medium',
+        confidence: Math.min(0.8, windowsScore / 3)
+      });
+    }
+
+    // Check for install sequence suggestions
+    const installScore = this.countKeywords(keywords, this.installKeywords);
+    if (installScore >= 1) {
+      suggestions.push({
+        type: 'install',
+        reason: 'User is asking about installation or setup',
+        priority: 'medium',
+        confidence: Math.min(0.85, installScore / 3)
+      });
+    }
+
+    // Sort by confidence and return top 3
+    return suggestions
+      .sort((a, b) => b.confidence - a.confidence)
+      .slice(0, 3);
   }
 
   private isGreeting(message: string): boolean {

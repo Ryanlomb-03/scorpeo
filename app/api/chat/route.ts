@@ -1,3 +1,12 @@
+import { SCORPEO_CORE_PROMPT } from '../../../lib/scorpeoCorePrompt';
+import { detectResponseMode, getModePrompt } from '../../../lib/responseModes';
+import { retrieveKnowledge } from '../../../lib/knowledgeRetrieval';
+import { classifyIntent } from '../../../lib/intentRouter';
+import { fastIntentDetection, IntentPlan } from '@/lib/fastIntentDetection';
+import { STUDY_METHODS_OPEN_TAG, STUDY_METHODS_CLOSE_TAG, TIMETABLE_OPEN_TAG, TIMETABLE_CLOSE_TAG, MATH_MATRIX_OPEN_TAG, MATH_MATRIX_CLOSE_TAG } from '@/types/artifacts';
+import { trimPrompt, trimToTokenLimit } from '@/lib/promptTrimmer';
+import { extractVideoId, getVideoInfo, formatDuration } from '@/lib/youtube';
+
 interface Message {
   role: string;
   content: string;
@@ -11,267 +20,403 @@ interface WikiCardData {
   wikiUrl?: string;
 }
 
-const SYSTEM_PROMPT: Message = {
-  role: "system",
-  content: `You are Scorpio, a witty, sharp, and intelligent AI built by Codedwaves.
-- Multi-lingual & Slang Aware: Respond in the exact language/slang used by the user (e.g., Sheng/Kiswahili for "sasa", Russian for "privyet").
-- Structured Notebook Lessons: When teaching languages, start with a Markdown Character Table, phonetics/pronunciation, and 3 practice words before full sentences.
-- Thinking Rules: Keep internal thoughts inside  tags strictly concise (2-3 sentences max).
-- Math: Format math with LaTeX ($...$ inline, $$...$$ block).
-- External Data: When external dictionary or Wikipedia data is appended to your context, use it to give 100% accurate grammatical and factual responses.`
-};
-
-// Free Dictionary API lookup
-async function fetchDictionary(word: string) {
-  try {
-    const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`);
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data[0]; // Returns definitions, partsOfSpeech, phonetics
-  } catch {
-    return null;
-  }
-}
-
-// 1. Search Wikipedia for best matching article title using Opensearch API
-async function searchWikipedia(query: string): Promise<string | null> {
-  try {
-    // Clean and normalize space variations for creator/brand titles
-    const normalizedQuery = query.trim();
-
-    // Search Opensearch endpoint
-    const searchUrl = `https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(normalizedQuery)}&limit=10&namespace=0&format=json&origin=*`;
-    const res = await fetch(searchUrl, {
-      headers: { "User-Agent": "ScorpioAI/1.0 (contact@codedwaves.com)" },
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-
-    // data[1] contains array of matched article titles
-    const titles: string[] = data[1] || [];
-    if (titles.length === 0) return null;
-
-    // Ignore album/song/film disambiguation pages when searching primary entities
-    const primaryTitle = titles.find((t: string) =>
-      !t.toLowerCase().includes("(album)") &&
-      !t.toLowerCase().includes("(song)") &&
-      !t.toLowerCase().includes("(disambiguation)") &&
-      !t.toLowerCase().includes("(film)")
-    ) || titles[0];
-
-    return primaryTitle;
-  } catch (error) {
-    console.error("Wikipedia search failed:", error);
-    return null;
-  }
-}
-
-// 2. Fetch full article summary for the best title
-async function fetchWikipediaSummary(title: string) {
-  try {
-    const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
-    const res = await fetch(summaryUrl, {
-      headers: { "User-Agent": "ScorpioAI/1.0 (contact@codedwaves.com)" },
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return {
-      title: data.title,
-      description: data.description || "",
-      extract: data.extract || "",
-      imageUrl: data.thumbnail?.source || null,
-      wikiUrl: data.content_urls?.desktop?.page || null,
-    };
-  } catch (error) {
-    console.error("Wikipedia summary fetch failed:", error);
-    return null;
-  }
-}
-
-// Wikipedia Summary REST API lookup with deduplication and search
-async function fetchWikipediaCard(topic: string, fetchedEntities: Set<string>): Promise<WikiCardData | null> {
-  const normalizedTopic = topic.toLowerCase().trim();
+export async function POST(req: Request) {
+  const overallStart = Date.now();
+  const { messages } = await req.json();
+  const lastUserMessage = messages[messages.length - 1]?.content || "";
   
-  // If entity was already fetched in this session, skip image payload
-  if (fetchedEntities.has(normalizedTopic)) {
-    return null;
+  // Detect YouTube URLs in the message
+  const youtubeVideoId = extractVideoId(lastUserMessage);
+  let youtubeVideoInfo = null;
+  
+  if (youtubeVideoId) {
+    console.log('[Chat Route] YouTube video detected:', youtubeVideoId);
+    youtubeVideoInfo = await getVideoInfo(youtubeVideoId);
+    if (youtubeVideoInfo) {
+      console.log('[Chat Route] YouTube video info fetched:', youtubeVideoInfo.title);
+    }
   }
 
+  // Route to appropriate handler based on content type
+  if (youtubeVideoId && youtubeVideoInfo) {
+    return await handleYouTubeChat(req, messages, lastUserMessage, youtubeVideoInfo, overallStart);
+  }
+  
+  return await handleNormalChat(req, messages, lastUserMessage, overallStart);
+}
+
+async function handleYouTubeChat(req: Request, messages: any[], lastUserMessage: string, youtubeVideoInfo: any, overallStart: number) {
+  // Fetch transcript using Python script
+  let transcript = null;
   try {
-    // First search for the best matching title
-    const matchedTitle = await searchWikipedia(topic);
-    if (!matchedTitle) return null;
+    const { exec } = require('child_process');
+    const { promisify } = require('util');
+    const execAsync = promisify(exec);
     
-    // Then fetch the summary for the matched title
-    const summaryData = await fetchWikipediaSummary(matchedTitle);
-    if (!summaryData || !summaryData.extract) return null;
+    const scriptPath = process.cwd() + '/fetch_transcript.py';
+    const { stdout, stderr } = await execAsync(`python "${scriptPath}" ${youtubeVideoInfo.id}`);
     
-    fetchedEntities.add(normalizedTopic); // Mark entity as fetched
-
-    return {
-      title: summaryData.title,
-      imageUrl: summaryData.imageUrl || null,
-      description: summaryData.description || "",
-      extract: summaryData.extract
-    };
-  } catch {
-    return null;
-  }
-}
-
-// Intent detection for dictionary and Wikipedia queries
-function detectIntent(lastMessage: string): { type: 'dictionary' | 'wikipedia' | null; query: string } {
-  const lower = lastMessage.toLowerCase();
-  
-  // Dictionary intent patterns
-  const dictPatterns = [
-    /define\s+(\w+)/i,
-    /is\s+(\w+)\s+(a\s+)?(noun|verb|adjective|adverb|pronoun|preposition|conjunction|interjection)/i,
-    /what\s+(does|is)\s+(\w+)\s+mean/i,
-    /meaning\s+of\s+(\w+)/i
-  ];
-  
-  for (const pattern of dictPatterns) {
-    const match = lower.match(pattern);
-    if (match) {
-      return { type: 'dictionary', query: match[1] };
-    }
-  }
-  
-  // Wikipedia intent patterns
-  const wikiPatterns = [
-    /what\s+is\s+(.+?)(?:\?|$)/i,
-    /who\s+is\s+(.+?)(?:\?|$)/i,
-    /tell\s+me\s+about\s+(.+?)(?:\?|$)/i,
-    /explain\s+(.+?)(?:\?|$)/i
-  ];
-  
-  for (const pattern of wikiPatterns) {
-    const match = lower.match(pattern);
-    if (match) {
-      return { type: 'wikipedia', query: match[1].trim() };
-    }
-  }
-  
-  return { type: null, query: '' };
-}
-
-// Provider 1: Cloudflare Workers AI
-async function callCloudflare(messages: Message[]) {
-  const response = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/deepseek-ai/deepseek-r1-distill-qwen-32b`,
-    {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${process.env.CLOUDFLARE_API_TOKEN}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        messages,
-        stream: true,
-        max_tokens: 4096,
-      }),
-    }
-  );
-  if (!response.ok) throw new Error(`Cloudflare failed: ${response.status}`);
-  return response;
-}
-
-// Provider 2: NVIDIA NIM
-async function callNvidia(messages: Message[]) {
-  const response = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${process.env.NVIDIA_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "deepseek-ai/deepseek-r1",
-      messages,
-      temperature: 0.6,
-      top_p: 0.95,
-      max_tokens: 4096,
-      stream: true,
-    }),
-  });
-  if (!response.ok) throw new Error(`NVIDIA NIM failed: ${response.status}`);
-  return response;
-}
-
-// Provider 3: Groq Cloud
-async function callGroq(messages: Message[]) {
-  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "qwen/qwen-2.5-72b-instruct",
-      messages,
-      temperature: 0.6,
-      max_tokens: 4096,
-      stream: true,
-    }),
-  });
-  if (!response.ok) throw new Error(`Groq failed: ${response.status}`);
-  return response;
-}
-
-// Stream processor for different API formats
-async function processStream(response: Response, wikiCardData: WikiCardData | null = null) {
-  const encoder = new TextEncoder();
-  const decoder = new TextDecoder();
-  
-  const stream = new ReadableStream({
-    async start(controller) {
-      const reader = response.body?.getReader();
-      if (!reader) {
-        controller.close();
-        return;
+    if (stdout) {
+      const result = JSON.parse(stdout);
+      if (result.success && result.transcript) {
+        transcript = result.transcript;
+        console.log('[Chat Route] Transcript fetched successfully from Python');
+      } else {
+        console.log('[Chat Route] Python script failed:', result.error || 'Unknown error');
       }
+    }
+    if (stderr) {
+      console.log('[Chat Route] Python script stderr:', stderr);
+    }
+  } catch (error) {
+    console.log('[Chat Route] Transcript fetch error, using description instead:', error);
+  }
 
-      try {
-        // Send wiki card data first if available
+  // Build system prompt with transcript or description
+  const description = youtubeVideoInfo.description || '';
+  const cleanDescription = description
+    .replace(/https?:\/\/[^\s]+/g, '')
+    .replace(/\n+/g, '\n')
+    .trim();
+  
+  let YOUTUBE_SYSTEM_PROMPT = `You are Scorpeo, a helpful AI assistant. The user shared a YouTube video and is asking you about it.
+
+VIDEO INFORMATION:
+Title: "${youtubeVideoInfo.title}"
+Channel: ${youtubeVideoInfo.channelTitle}
+Duration: ${formatDuration(youtubeVideoInfo.duration)}
+Views: ${youtubeVideoInfo.viewCount.toLocaleString()}
+Published: ${new Date(youtubeVideoInfo.publishedAt).toLocaleDateString()}`;
+
+  if (transcript) {
+    YOUTUBE_SYSTEM_PROMPT += `\n\nVIDEO TRANSCRIPT:\n${transcript.substring(0, 3000)}\n\nUse this transcript to answer the user's questions about what is being said in the video.`;
+  } else {
+    YOUTUBE_SYSTEM_PROMPT += `\n\nVIDEO DESCRIPTION:\n${cleanDescription.substring(0, 1200)}\n\nBased on the title and description, discuss what this video is about.`;
+  }
+
+  YOUTUBE_SYSTEM_PROMPT += `\n\nINSTRUCTIONS:
+- The video player is visible to the user so they can watch it along with your response
+- DO NOT say you can't access the video or that you don't know what's in it
+- Use the transcript or metadata to provide helpful insights about the video's content
+- If the user asks "what is he saying?" or "what's the video about?", use the transcript information above
+- When discussing specific topics or key points, include timestamps in the format [MM:SS] (single timestamp, not ranges)
+- Format your response as bullet points when listing multiple topics
+- ALWAYS end your response with the YouTube URL: https://www.youtube.com/watch?v=${youtubeVideoInfo.id}
+- Be conversational and helpful`;
+
+  const SYSTEM_PROMPT: Message = {
+    role: "system",
+    content: YOUTUBE_SYSTEM_PROMPT
+  };
+
+  const payloadMessages = [SYSTEM_PROMPT, ...messages.slice(-1)];
+  
+  const groqModel = 'qwen/qwen3.8-27b';
+  const maxTokens = 512;
+  const temperature = 0.7;
+
+  try {
+    const { GroqProvider } = await import('../../../lib/ai/providers/groq');
+    const groqApiKey = process.env.GROQ_API_KEY;
+
+    if (!groqApiKey) {
+      console.error('[Chat Route] Groq API key not configured');
+      return new Response(JSON.stringify({ error: 'API key not configured' }), { status: 500 });
+    }
+
+    const groqProvider = new GroqProvider(groqApiKey);
+    const abortController = new AbortController();
+
+    const aiRequest = {
+      messages: payloadMessages,
+      model: groqModel,
+      taskType: 'conversation' as any,
+      capabilities: { chat: true, streaming: true } as any,
+      temperature,
+      maxTokens,
+      stream: true,
+      signal: abortController.signal,
+    };
+
+    console.log('[Chat Route] YouTube chat request config:', { model: groqModel, maxTokens, hasTranscript: !!transcript });
+
+    return streamFromGroq(groqProvider, aiRequest, abortController, overallStart);
+  } catch (error) {
+    console.error('[Chat Route] YouTube chat error:', error);
+    return new Response(JSON.stringify({ error: 'Failed to process request' }), { status: 500 });
+  }
+}
+
+async function handleNormalChat(req: Request, messages: any[], lastUserMessage: string, overallStart: number) {
+  // Track fetched entities for deduplication
+  const fetchedEntities = new Set<string>();
+
+  // 0. Fast intent detection using Cloudflare Clef (runs before everything else)
+  const intentStart = Date.now();
+  
+  // Extract conversation context for better routing
+  const conversationContext = messages.slice(-3).map((m: Message) => m.content);
+  
+  // Skip Clef for simple requests to reduce latency
+  let fastIntent;
+  if (fastIntentDetection.shouldSkipClef(lastUserMessage, conversationContext)) {
+    console.log('[Chat Route] Skipping Clef - using local fast path');
+    fastIntent = fastIntentDetection.localDetect(lastUserMessage);
+  } else {
+    fastIntent = await fastIntentDetection.detect(lastUserMessage, conversationContext);
+  }
+  
+  const intentEnd = Date.now();
+  const intentPlan = fastIntent.plan;
+  
+  console.log(`[Chat Route] Timing - Intent Detection: ${intentEnd - intentStart}ms`);
+  console.log(`[Chat Route] Fast Intent Detection:`, {
+    intent: fastIntent.intent,
+    suggestedArtifacts: fastIntent.suggestedArtifacts,
+    confidence: fastIntent.confidence,
+    shouldShowCard: fastIntent.shouldShowCard,
+    knowledgeLevel: fastIntent.knowledgeLevel,
+    plan: intentPlan ? {
+      userIntent: intentPlan.userIntent,
+      knowledgeStrategy: intentPlan.knowledgeStrategy,
+      artifactIntent: intentPlan.artifactIntent,
+      requiredTools: intentPlan.requiredTools,
+      reason: intentPlan.reason
+    } : null
+  });
+
+  // Build artifact instructions for the AI based on the intent plan
+  let artifactInstructions = '';
+  if (intentPlan && fastIntent.suggestedArtifacts.length > 0) {
+    artifactInstructions = `\n\n[INTENT PLAN]\nUser Intent: ${intentPlan.userIntent}\nKnowledge Strategy: ${intentPlan.knowledgeStrategy}\nArtifact Intent: ${intentPlan.artifactIntent}\nRequired Tools: ${intentPlan.requiredTools.join(', ') || 'none'}\nReason: ${intentPlan.reason || ''}\n\n[ARTIFACT INSTRUCTIONS]\n${fastIntent.toolInstructions}`;
+  } else if (fastIntent.suggestedArtifacts.length > 0) {
+    artifactInstructions = `\n\n[ARTIFACT SUGGESTIONS]\n${fastIntent.toolInstructions}\nSuggested artifacts: ${fastIntent.suggestedArtifacts.join(', ')}`;
+  }
+
+  // 1. Classify intent to determine if knowledge retrieval is needed
+  let intent;
+  let knowledgeLevel;
+  
+  if (intentPlan) {
+    const strategyToLevel: Record<string, number> = {
+      'model_knowledge': 0,
+      'retrieve_sources': 2,
+      'tool_assisted': 1,
+      'clarify': 0
+    };
+    knowledgeLevel = strategyToLevel[intentPlan.knowledgeStrategy] || 0;
+    intent = {
+      type: intentPlan.userIntent,
+      confidence: intentPlan.confidence || 0.7,
+      knowledgeLevel,
+      shouldShowCard: fastIntent.shouldShowCard
+    };
+  } else {
+    intent = classifyIntent(lastUserMessage);
+    knowledgeLevel = intent.knowledgeLevel;
+  }
+  
+  console.log(`[Chat Route] Final Intent:`, {
+    type: intent.type,
+    confidence: intent.confidence,
+    knowledgeLevel,
+    shouldShowCard: intent.shouldShowCard,
+  });
+  
+  let wikiContext = "";
+  let wikiCardData: WikiCardData | null = null;
+
+  // Only retrieve knowledge if intent requires it (Level 1-3)
+  if (intent.knowledgeLevel > 0) {
+    const retrievalStart = Date.now();
+    const retrieval = await retrieveKnowledge(lastUserMessage);
+    const retrievalEnd = Date.now();
+    
+    console.log(`[Chat Route] Timing - Knowledge Retrieval: ${retrievalEnd - retrievalStart}ms`);
+    
+    if (retrieval.data && retrieval.shouldShowCard) {
+      if (retrieval.source === 'wikipedia') {
+        wikiCardData = {
+          title: retrieval.data.title,
+          imageUrl: retrieval.data.thumbnail || null,
+          description: retrieval.data.description || "",
+          extract: retrieval.data.extract,
+          wikiUrl: retrieval.data.url,
+        };
+        wikiContext = `\n\n[WIKIPEDIA DATA FOR "${retrieval.data.title}"]:
+Description: ${retrieval.data.description}
+Summary: ${retrieval.data.extract}
+Source: ${retrieval.data.url}`;
+      } else if (retrieval.source === 'wikidata') {
+        wikiCardData = {
+          title: retrieval.data.label,
+          description: retrieval.data.description || "Entity",
+          extract: JSON.stringify(retrieval.data.claims, null, 2),
+          wikiUrl: retrieval.data.url,
+        };
+        wikiContext = `\n\n[WIKIDATA DATA FOR "${retrieval.data.label}":
+Description: ${retrieval.data.description}
+Structured Data: ${JSON.stringify(retrieval.data.claims, null, 2)}
+Source: ${retrieval.data.url}`;
+      }
+    }
+  } else {
+    console.log(`[Chat Route] No retrieval needed (Level 0 - model knowledge only)`);
+  }
+
+  // 3. Detect response mode
+  const detectedMode = detectResponseMode(lastUserMessage);
+  const modePrompt = detectedMode ? getModePrompt(detectedMode) : '';
+  const modeInstruction = detectedMode 
+    ? `\n\n[RESPONSE MODE: ${detectedMode.toUpperCase()}]\n${modePrompt}` 
+    : '';
+
+  // 4. Combine into master system prompt using Scorpeo Core
+  let fullSystemPrompt = `${SCORPEO_CORE_PROMPT}
+
+${artifactInstructions}${wikiContext}${modeInstruction}`;
+
+  // Trim the system prompt to avoid 413 errors
+  const trimmedPrompt = trimPrompt(fullSystemPrompt, 'aggressive');
+  const finalSystemPrompt = trimToTokenLimit(trimmedPrompt.compressed, 3000);
+
+  const SYSTEM_PROMPT: Message = {
+    role: "system",
+    content: finalSystemPrompt
+  };
+
+  const payloadMessages = [SYSTEM_PROMPT, ...messages.slice(-3)];
+
+  // Use Groq for normal chat
+  let groqModel = 'qwen/qwen3.8-27b';
+  let maxTokens = 1024;
+  let temperature = 0.7;
+  let useNvidiaDirectly = false;
+
+  if (fastIntent.knowledgeLevel > 1 || fastIntent.suggestedArtifacts.length > 0) {
+    useNvidiaDirectly = true;
+    maxTokens = 2048;
+    temperature = 0.5;
+  }
+
+  try {
+    const encoder = new TextEncoder();
+    let streamClosed = false;
+    let abortController: AbortController | null = null;
+    
+    const stream = new ReadableStream({
+      async start(controller) {
+        const originalClose = controller.close.bind(controller);
+        controller.close = () => {
+          streamClosed = true;
+          if (abortController) abortController.abort();
+          originalClose();
+        };
+
         if (wikiCardData) {
           const wikiPayload = JSON.stringify({ type: 'wiki_card', data: wikiCardData });
-          controller.enqueue(encoder.encode(`[WIKI_CARD_START]${wikiPayload}[WIKI_CARD_END]`));
+          if (!streamClosed) {
+            controller.enqueue(encoder.encode(`[WIKI_CARD_START]${wikiPayload}[WIKI_CARD_END]`));
+          }
         }
-        
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
 
-          const chunk = decoder.decode(value, { stream: true });
-          
-          // Handle different streaming formats
-          const lines = chunk.split('\n');
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6).trim();
-              if (data === '[DONE]') continue;
-              
-              try {
-                const parsed = JSON.parse(data);
-                // Cloudflare format
-                const content = parsed.response || parsed.result?.response || 
-                               // NVIDIA/Groq format
-                               parsed.choices?.[0]?.delta?.content || "";
-                if (content) {
-                  controller.enqueue(encoder.encode(content));
-                }
-              } catch (e) {
-                // Skip invalid JSON
+        try {
+          if (useNvidiaDirectly) {
+            const { NVIDIAProvider } = await import('../../../lib/ai/providers/nvidia');
+            const nvidiaApiKey = process.env.NVIDIA_API_KEY;
+            const nvidiaProvider = new NVIDIAProvider(nvidiaApiKey);
+            abortController = new AbortController();
+
+            const aiRequest = {
+              messages: payloadMessages,
+              model: 'minimaxai/minimax-m3.1-flash',
+              taskType: 'conversation' as any,
+              capabilities: { chat: true, streaming: true } as any,
+              temperature,
+              maxTokens,
+              stream: true,
+              signal: abortController.signal,
+            };
+
+            for await (const chunk of nvidiaProvider.stream(aiRequest)) {
+              if (streamClosed) break;
+              if (chunk.type === 'text' && chunk.content) {
+                controller.enqueue(encoder.encode(chunk.content));
+              }
+            }
+          } else {
+            const { GroqProvider } = await import('../../../lib/ai/providers/groq');
+            const groqApiKey = process.env.GROQ_API_KEY;
+            const groqProvider = new GroqProvider(groqApiKey);
+            abortController = new AbortController();
+
+            const aiRequest = {
+              messages: payloadMessages,
+              model: groqModel,
+              taskType: 'conversation' as any,
+              capabilities: { chat: true, streaming: true } as any,
+              temperature,
+              maxTokens,
+              stream: true,
+              signal: abortController.signal,
+            };
+
+            console.log('[Chat Route] Groq request config:', { model: groqModel, maxTokens });
+
+            for await (const chunk of groqProvider.stream(aiRequest)) {
+              if (streamClosed) break;
+              if (chunk.type === 'text' && chunk.content) {
+                controller.enqueue(encoder.encode(chunk.content));
               }
             }
           }
+        } catch (error) {
+          console.error('[Chat Route] Stream error:', error);
+        } finally {
+          controller.close();
+        }
+      }
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive",
+      },
+    });
+  } catch (error) {
+    console.error('[Chat Route] Error:', error);
+    return new Response(JSON.stringify({ error: 'Internal server error' }), { status: 500 });
+  }
+}
+
+async function streamFromGroq(groqProvider: any, aiRequest: any, abortController: AbortController, overallStart: number) {
+  const encoder = new TextEncoder();
+  let streamClosed = false;
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      const originalClose = controller.close.bind(controller);
+      controller.close = () => {
+        streamClosed = true;
+        abortController.abort();
+        originalClose();
+      };
+
+      try {
+        for await (const chunk of groqProvider.stream(aiRequest)) {
+          if (streamClosed) break;
+          if (chunk.type === 'text' && chunk.content) {
+            controller.enqueue(encoder.encode(chunk.content));
+          }
         }
       } catch (error) {
-        console.error("Stream reading error:", error);
+        console.error('[Chat Route] Groq stream error:', error);
       } finally {
         controller.close();
       }
-    },
+    }
   });
 
   return new Response(stream, {
@@ -281,110 +426,4 @@ async function processStream(response: Response, wikiCardData: WikiCardData | nu
       "Connection": "keep-alive",
     },
   });
-}
-
-export async function POST(req: Request) {
-  const { messages } = await req.json();
-  const lastUserMessage = messages[messages.length - 1]?.content || "";
-  
-  // Track fetched entities for deduplication
-  const fetchedEntities = new Set<string>();
-
-  // 1. Check if Wikipedia summary is needed
-  let wikiContext = "";
-  let wikiCardData: WikiCardData | null = null;
-
-  // Detect explicit search commands like "pls search...", "please lookup...", "search who is..."
-  const explicitSearchMatch = lastUserMessage.match(/(?:pls|please|can you)?\s*(?:search|search for|lookup|google)\s+(.+)/i);
-
-  let searchQuery = "";
-  let forceSearch = false;
-
-  if (explicitSearchMatch) {
-    // Extract query after the search command
-    searchQuery = explicitSearchMatch[1].trim();
-    forceSearch = true;
-  } else {
-    // Fallback to auto-extracted topic
-    searchQuery = lastUserMessage
-      .replace(/who is|what is|tell me about|who was|what was|where is|do you know|know about|\?/gi, "")
-      .trim();
-  }
-
-  // Run search if explicitly requested OR if auto-search conditions are met
-  if (forceSearch || (searchQuery.length >= 3 && !/^(hi|hello|hey|sasa|hola|thanks|ok|yes|no)$/i.test(searchQuery))) {
-    const matchedTitle = await searchWikipedia(searchQuery);
-    if (matchedTitle) {
-      const summaryData = await fetchWikipediaSummary(matchedTitle);
-      if (summaryData && summaryData.extract) {
-        wikiCardData = {
-          title: summaryData.title,
-          imageUrl: summaryData.imageUrl || null,
-          description: summaryData.description || "",
-          extract: summaryData.extract,
-          wikiUrl: summaryData.wikiUrl
-        };
-        wikiContext = `\n\n[LIVE SEARCH DATA FOR "${summaryData.title}"]:
-Description: ${summaryData.description}
-Summary: ${summaryData.extract}
-Source: ${summaryData.wikiUrl}`;
-      }
-    }
-  }
-
-  // 2. Check if Dictionary lookup is needed
-  if (lastUserMessage.toLowerCase().includes("define") || lastUserMessage.toLowerCase().includes("meaning of")) {
-    const wordMatch = lastUserMessage.match(/define\s+(\w+)|meaning\s+of\s+(\w+)/i);
-    if (wordMatch) {
-      const word = wordMatch[1] || wordMatch[2];
-      const dictData = await fetchDictionary(word);
-      if (dictData) {
-        wikiContext += `\n\n[DICTIONARY CONTEXT for ${word}]:\n${JSON.stringify(dictData)}`;
-      }
-    }
-  }
-
-  // 3. Combine into master system prompt
-  const SYSTEM_PROMPT: Message = {
-    role: "system",
-    content: `You are Scorpio, an intelligent and accurate AI built by Codedwaves.
-Search Requests: When the user explicitly asks you to search for something, use the provided live search context to give a direct, accurate answer.
-Factual Accuracy: Always prioritize live search data over internal assumptions for real-world figures, companies, and CEOs.
-Structured Learning: If the user asks to learn about a topic or person, give a clear overview, key facts, and offer to dive deeper.
-Thinking Rules: Keep internal thoughts inside  tags strictly under 2-3 sentences max.
-Multi-lingual & Slang Aware: Respond in the exact language/slang used by the user.
-Grammar: If Dictionary context is provided, use it for accurate grammatical information.
-
-Code Writing: When writing code, open the backtick code block immediately with the appropriate language identifier (e.g. \`\`\`typescript). Write modular, production-ready, clean code without repetitive comments or unnecessary introductory text.
-
-When live search/Wikipedia data is available, use it to provide accurate, well-written content. Focus on delivering the main information clearly and comprehensively. Do not manually append a Sources section or Search Summary header in plain text - the UI will handle rendering sources via structured data.${wikiContext}`
-  };
-
-  const payloadMessages = [SYSTEM_PROMPT, ...messages.slice(-6)];
-
-  // 4. Chain providers (Cloudflare -> NVIDIA -> Groq)
-  try {
-    const response = await callCloudflare(payloadMessages);
-    return await processStream(response, wikiCardData);
-  } catch (err1) {
-    console.warn("Cloudflare failed. Escalating to NVIDIA NIM...", err1);
-  }
-
-  try {
-    const response = await callNvidia(payloadMessages);
-    return await processStream(response, wikiCardData);
-  } catch (err2) {
-    console.warn("NVIDIA NIM failed. Escalating to Groq...", err2);
-  }
-
-  try {
-    const response = await callGroq(payloadMessages);
-    return await processStream(response, wikiCardData);
-  } catch (err3) {
-    console.error("All AI Providers failed.", err3);
-    return new Response(JSON.stringify({ error: "All AI services are currently unavailable. Please check your API keys configuration or try again later." }), {
-      status: 503,
-      headers: { "Content-Type": "application/json" }
-    });
-  }
 }

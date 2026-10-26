@@ -24,8 +24,8 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
       </AnimatePresence>
 
       <Sidebar />
-      
-      <div className="flex-1 flex flex-col min-h-0 bg-neutral-900 w-full">
+
+      <div className="flex-1 min-w-0 flex flex-col min-h-0 bg-neutral-900 w-full max-w-full overflow-x-hidden relative z-0">
         {children}
       </div>
     </div>

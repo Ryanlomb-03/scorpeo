@@ -6,7 +6,20 @@ module.exports = {
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
-    extend: {},
+    extend: {
+      fontFamily: {
+        sans: ['Inter', 'sans-serif'],
+        serif: ['Playfair Display', 'serif'],
+        lora: ['Lora', 'serif'],
+        merriweather: ['Merriweather', 'serif'],
+        handwritten: ['Caveat', 'cursive'],
+        kalam: ['Kalam', 'cursive'],
+        patrick: ['Patrick Hand', 'cursive'],
+        roboto: ['Roboto', 'sans-serif'],
+        opensans: ['Open Sans', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+      },
+    },
   },
   plugins: [],
 }

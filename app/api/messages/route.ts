@@ -1,28 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import supabase from "@/lib/db";
 
 export async function GET(request: NextRequest) {
   try {
     const conversationId = request.nextUrl.searchParams.get("conversationId");
-    const limit = request.nextUrl.searchParams.get("limit") || "100";
     
     if (!conversationId) {
       return NextResponse.json({ error: "conversationId required" }, { status: 400 });
     }
 
-    const { data: messages, error } = await supabase
-      .from("messages")
-      .select("*")
-      .eq("conversation_id", conversationId)
-      .order("created_at", { ascending: true })
-      .limit(parseInt(limit));
-
-    if (error) {
-      console.error("Supabase GET messages error:", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    return NextResponse.json(messages);
+    // Return empty array (localStorage handles actual storage)
+    return NextResponse.json([]);
   } catch (err) {
     console.error("GET /api/messages error:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -37,28 +24,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
     
-    const { data: message, error } = await supabase
-      .from("messages")
-      .insert({
-        id,
-        conversation_id: conversationId,
-        role,
-        content,
-        created_at: new Date().toISOString()
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.error("Supabase POST messages error:", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    // Update conversation's updated_at
-    await supabase
-      .from("conversations")
-      .update({ updated_at: new Date().toISOString() })
-      .eq("id", conversationId);
+    // Return the message object (localStorage handles actual storage)
+    const message = {
+      id,
+      conversation_id: conversationId,
+      role,
+      content,
+      created_at: new Date().toISOString()
+    };
 
     return NextResponse.json(message);
   } catch (err) {

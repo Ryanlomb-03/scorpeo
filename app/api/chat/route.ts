@@ -46,11 +46,11 @@ export async function POST(req: Request) {
 }
 
 async function handleYouTubeChat(req: Request, messages: any[], lastUserMessage: string, youtubeVideoInfo: any, overallStart: number) {
-  // Fetch transcript using Railway API
+  // Fetch transcript using Render API
   let transcript = null;
   try {
-    const railwayUrl = process.env.RAILWAY_TRANSCRIPT_URL || 'https://youtube-transcript-api-tau-one.vercel.app/transcript';
-    const response = await fetch(`${railwayUrl}`, {
+    const renderUrl = process.env.RENDER_TRANSCRIPT_URL || 'https://youtube-transcript-api-tau-one.vercel.app/transcript';
+    const response = await fetch(`${renderUrl}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -62,12 +62,12 @@ async function handleYouTubeChat(req: Request, messages: any[], lastUserMessage:
       const result = await response.json();
       if (result.success && result.transcript) {
         transcript = result.transcript;
-        console.log('[Chat Route] Transcript fetched successfully from Railway API');
+        console.log('[Chat Route] Transcript fetched successfully from Render API');
       } else {
-        console.log('[Chat Route] Railway API failed:', result.error || 'Unknown error');
+        console.log('[Chat Route] Render API failed:', result.error || 'Unknown error');
       }
     } else {
-      console.log('[Chat Route] Railway API returned non-OK status:', response.status);
+      console.log('[Chat Route] Render API returned non-OK status:', response.status);
     }
   } catch (error) {
     console.log('[Chat Route] Transcript fetch error, using description instead:', error);

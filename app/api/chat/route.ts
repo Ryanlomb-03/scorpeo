@@ -46,27 +46,28 @@ export async function POST(req: Request) {
 }
 
 async function handleYouTubeChat(req: Request, messages: any[], lastUserMessage: string, youtubeVideoInfo: any, overallStart: number) {
-  // Fetch transcript using Python script
+  // Fetch transcript using Railway API
   let transcript = null;
   try {
-    const { exec } = require('child_process');
-    const { promisify } = require('util');
-    const execAsync = promisify(exec);
-    
-    const scriptPath = process.cwd() + '/fetch_transcript.py';
-    const { stdout, stderr } = await execAsync(`python "${scriptPath}" ${youtubeVideoInfo.id}`);
-    
-    if (stdout) {
-      const result = JSON.parse(stdout);
+    const railwayUrl = process.env.RAILWAY_TRANSCRIPT_URL || 'https://youtube-transcript-api-tau-one.vercel.app/transcript';
+    const response = await fetch(`${railwayUrl}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ video_id: youtubeVideoInfo.id }),
+    });
+
+    if (response.ok) {
+      const result = await response.json();
       if (result.success && result.transcript) {
         transcript = result.transcript;
-        console.log('[Chat Route] Transcript fetched successfully from Python');
+        console.log('[Chat Route] Transcript fetched successfully from Railway API');
       } else {
-        console.log('[Chat Route] Python script failed:', result.error || 'Unknown error');
+        console.log('[Chat Route] Railway API failed:', result.error || 'Unknown error');
       }
-    }
-    if (stderr) {
-      console.log('[Chat Route] Python script stderr:', stderr);
+    } else {
+      console.log('[Chat Route] Railway API returned non-OK status:', response.status);
     }
   } catch (error) {
     console.log('[Chat Route] Transcript fetch error, using description instead:', error);

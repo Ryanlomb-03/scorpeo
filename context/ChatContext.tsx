@@ -521,12 +521,32 @@ result
       // Check for YouTube URL and fetch transcript if Pyodide is loaded
       let transcript = null;
       const videoId = extractVideoId(content);
-      if (videoId && pyodideLoaded) {
-        console.log('[ChatContext] YouTube URL detected, fetching transcript...');
-        transcript = await fetchYouTubeTranscript(videoId);
-        console.log('[ChatContext] Transcript result:', transcript ? `Found (${transcript.length} chars)` : 'Not found');
-      } else if (videoId) {
-        console.log('[ChatContext] YouTube URL detected but Pyodide not loaded yet');
+      if (videoId) {
+        console.log('[ChatContext] YouTube URL detected, waiting for Pyodide to load...');
+        // Wait for Pyodide to load if not ready (with timeout)
+        if (!pyodideLoaded) {
+          console.log('[ChatContext] Pyodide not loaded, waiting...');
+          await new Promise<void>((resolve) => {
+            const checkInterval = setInterval(() => {
+              if (pyodideLoaded) {
+                clearInterval(checkInterval);
+                resolve();
+              }
+            }, 100);
+            // Timeout after 10 seconds
+            setTimeout(() => {
+              clearInterval(checkInterval);
+              resolve();
+            }, 10000);
+          });
+        }
+        if (pyodideLoaded) {
+          console.log('[ChatContext] Pyodide loaded, fetching transcript...');
+          transcript = await fetchYouTubeTranscript(videoId);
+          console.log('[ChatContext] Transcript result:', transcript ? `Found (${transcript.length} chars)` : 'Not found');
+        } else {
+          console.log('[ChatContext] Pyodide failed to load in time, skipping transcript');
+        }
       }
       
       const chatRes = await fetch("/api/chat", {

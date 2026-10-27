@@ -233,7 +233,7 @@ async function handleDictionaryChat(req: Request, messages: any[], lastUserMessa
       }
       
       if (entry.phonetics && entry.phonetics.length > 0) {
-        const audioUrl = entry.phonetics.find(p => p.audio)?.audio;
+        const audioUrl = entry.phonetics.find((p: any) => p.audio)?.audio;
         if (audioUrl) {
           dictionaryInfo += `AUDIO: ${audioUrl}\n`;
         }

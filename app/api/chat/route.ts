@@ -46,28 +46,23 @@ export async function POST(req: Request) {
 }
 
 async function handleYouTubeChat(req: Request, messages: any[], lastUserMessage: string, youtubeVideoInfo: any, overallStart: number) {
-  // Fetch transcript using Render API
+  // Fetch transcript using YouTube Data API
   let transcript = null;
   try {
-    const renderUrl = process.env.RENDER_TRANSCRIPT_URL || 'https://youtube-transcript-api-tau-one.vercel.app/transcript';
-    const response = await fetch(`${renderUrl}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ video_id: youtubeVideoInfo.id }),
-    });
-
-    if (response.ok) {
-      const result = await response.json();
-      if (result.success && result.transcript) {
-        transcript = result.transcript;
-        console.log('[Chat Route] Transcript fetched successfully from Render API');
-      } else {
-        console.log('[Chat Route] Render API failed:', result.error || 'Unknown error');
+    const apiKey = process.env.YOUTUBE_API_KEY;
+    if (apiKey) {
+      const response = await fetch(`https://www.googleapis.com/youtube/v3/captions?part=snippet&videoId=${youtubeVideoInfo.id}&key=${apiKey}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.items && data.items.length > 0) {
+          // Combine all caption segments
+          const captionText = data.items
+            .map((item: any) => item.snippet)
+            .join(' ');
+          transcript = captionText;
+          console.log('[Chat Route] Transcript fetched successfully from YouTube Data API');
+        }
       }
-    } else {
-      console.log('[Chat Route] Render API returned non-OK status:', response.status);
     }
   } catch (error) {
     console.log('[Chat Route] Transcript fetch error, using description instead:', error);

@@ -104,7 +104,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const loadPyodideLib = async () => {
       try {
-        const pyodide = await loadPyodide();
+        const pyodide = await loadPyodide() as any;
         await pyodide.loadPackage("micropip");
         await pyodide.installPackage("youtube-transcript-api");
         pyodideRef.current = pyodide;

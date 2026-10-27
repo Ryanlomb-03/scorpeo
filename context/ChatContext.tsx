@@ -2,7 +2,6 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from "react";
 import { isSimpleGreeting, getLocalGreetingResponse } from "@/lib/localGreetings";
-import { loadPyodide } from "pyodide";
 
 export interface Message {
   id: string;
@@ -100,10 +99,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const pyodideRef = useRef<any>(null);
   const [pyodideLoaded, setPyodideLoaded] = useState(false);
 
-  // Load Pyodide for client-side Python execution
+  // Load Pyodide for client-side Python execution (only on client side)
   useEffect(() => {
+    if (typeof window === 'undefined') return; // Skip on server
+    
     const loadPyodideLib = async () => {
       try {
+        const { loadPyodide } = await import('pyodide');
         const pyodide = await loadPyodide() as any;
         await pyodide.loadPackage("micropip");
         await pyodide.installPackage("youtube-transcript-api");

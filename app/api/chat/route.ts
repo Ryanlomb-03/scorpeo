@@ -195,26 +195,6 @@ INSTRUCTIONS:
 
     console.log('[Chat Route] News chat request:', { query, model: groqModel });
 
-    // Use the same streaming approach as handleNormalChat
-    const SYSTEM_PROMPT: Message = {
-      role: "system",
-      content: NEWS_SYSTEM_PROMPT
-    };
-
-    const payloadMessages = [SYSTEM_PROMPT, ...messages.slice(-1)];
-    
-    const groqModel = 'qwen/qwen3.8-27b';
-    const temperature = 0.7;
-    const maxTokens = 4096;
-
-    const aiRequest = {
-      model: groqModel,
-      messages: payloadMessages,
-      temperature,
-      max_tokens: maxTokens,
-      stream: true,
-    };
-
     // Inline streaming (same as handleNormalChat)
     const { GroqProvider } = await import('../../../lib/ai/providers/groq');
     const groqApiKey = process.env.GROQ_API_KEY;

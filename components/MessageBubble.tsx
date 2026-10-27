@@ -640,6 +640,16 @@ export default function MessageBubble({ role, content, thinking, onEdit, isLoadi
   const [timestampedSummary, setTimestampedSummary] = useState<any>(null);
   const [processedContent, setProcessedContent] = useState<string>(content);
 
+  // Helper function to format YouTube date
+  const formatYouTubeDate = (dateString: string): string => {
+    const date = new Date(dateString);
+    const day = date.getDate();
+    const month = date.toLocaleDateString('en-US', { month: 'long' });
+    const year = date.getFullYear();
+    const suffix = day % 10 === 1 && day % 100 !== 11 ? 'st' : day % 10 === 2 && day % 100 !== 12 ? 'nd' : day % 10 === 3 && day % 100 !== 13 ? 'rd' : 'th';
+    return `${month} ${day}${suffix} ${year}`;
+  };
+
   // Detect YouTube URL and fetch video info
   useEffect(() => {
     const videoId = extractVideoId(content);
@@ -1792,14 +1802,7 @@ export default function MessageBubble({ role, content, thinking, onEdit, isLoadi
                   </g>
                 </svg>
                 <span>
-                  {(() => {
-                    const date = new Date(youtubeVideoData.publishedAt);
-                    const day = date.getDate();
-                    const month = date.toLocaleDateString('en-US', { month: 'long' });
-                    const year = date.getFullYear();
-                    const suffix = day % 10 === 1 && day % 100 !== 11 ? 'st' : day % 10 === 2 && day % 100 !== 12 ? 'nd' : day % 10 === 3 && day % 100 !== 13 ? 'rd' : 'th';
-                    return `${month} ${day}${suffix} ${year}`;
-                  })()}
+                  {formatYouTubeDate(youtubeVideoData.publishedAt)}
                 </span>
               </div>
             </div>

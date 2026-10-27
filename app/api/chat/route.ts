@@ -104,7 +104,7 @@ INSTRUCTIONS:
 - Extract and list key points, main arguments, and important details
 - When discussing specific topics or key points, include timestamps in the format [MM:SS] (single timestamp, not ranges)
 - Format your response as bullet points when listing multiple topics
-- ALWAYS end your response with the YouTube URL: https://www.youtube.com/watch?v=${youtubeVideoInfo.id}
+- DO NOT include the YouTube URL in your response - the embedded player is already visible
 - Be conversational and helpful`;
 
   const SYSTEM_PROMPT: Message = {

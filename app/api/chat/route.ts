@@ -22,7 +22,7 @@ interface WikiCardData {
 
 export async function POST(req: Request) {
   const overallStart = Date.now();
-  const { messages } = await req.json();
+  const { messages, transcript, videoId } = await req.json();
   const lastUserMessage = messages[messages.length - 1]?.content || "";
   
   // Detect YouTube URLs in the message
@@ -39,14 +39,23 @@ export async function POST(req: Request) {
 
   // Route to appropriate handler based on content type
   if (youtubeVideoId && youtubeVideoInfo) {
-    return await handleYouTubeChat(req, messages, lastUserMessage, youtubeVideoInfo, overallStart);
+    return await handleYouTubeChat(req, messages, lastUserMessage, youtubeVideoInfo, overallStart, transcript);
   }
   
   return await handleNormalChat(req, messages, lastUserMessage, overallStart);
 }
 
-async function handleYouTubeChat(req: Request, messages: any[], lastUserMessage: string, youtubeVideoInfo: any, overallStart: number) {
-  // Build system prompt with full video metadata and description
+async function handleYouTubeChat(req: Request, messages: any[], lastUserMessage: string, youtubeVideoInfo: any, overallStart: number, transcript?: string) {
+  // Use transcript provided by client (fetched via Pyodide to avoid IP blocking)
+  // If no transcript provided, fall back to description
+  if (!transcript) {
+    console.log('[Chat Route] No transcript provided, using description');
+    transcript = youtubeVideoInfo.description || '';
+  } else {
+    console.log('[Chat Route] Using transcript from client, length:', transcript.length);
+  }
+
+  // Build system prompt with transcript or description
   const description = youtubeVideoInfo.description || '';
   const cleanDescription = description
     .replace(/https?:\/\/[^\s]+/g, '')
@@ -60,16 +69,19 @@ Title: "${youtubeVideoInfo.title}"
 Channel: ${youtubeVideoInfo.channelTitle}
 Duration: ${formatDuration(youtubeVideoInfo.duration)}
 Views: ${youtubeVideoInfo.viewCount.toLocaleString()}
-Published: ${new Date(youtubeVideoInfo.publishedAt).toLocaleDateString()}
+Published: ${new Date(youtubeVideoInfo.publishedAt).toLocaleDateString()}`;
 
-VIDEO DESCRIPTION:
-${cleanDescription}
+  if (transcript && transcript.length > 100) {
+    YOUTUBE_SYSTEM_PROMPT += `\n\nVIDEO TRANSCRIPT:\n${transcript}\n\nUse this transcript to answer the user's questions about what is being said in the video.`;
+  } else {
+    YOUTUBE_SYSTEM_PROMPT += `\n\nVIDEO DESCRIPTION:\n${cleanDescription}\n\nBased on the title and description, discuss what this video is about.`;
+  }
 
-INSTRUCTIONS:
+  YOUTUBE_SYSTEM_PROMPT += `\n\nINSTRUCTIONS:
 - The video player is visible to the user so they can watch it along with your response
 - DO NOT say you can't access the video or that you don't know what's in it
-- Use the title, description, and metadata to provide helpful insights about the video's content
-- If the user asks "what is he saying?" or "what's the video about?", analyze the description and title to provide a summary
+- Use the transcript or metadata to provide helpful insights about the video's content
+- If the user asks "what is he saying?" or "what's the video about?", use the transcript information above
 - When discussing specific topics or key points, include timestamps in the format [MM:SS] (single timestamp, not ranges)
 - Format your response as bullet points when listing multiple topics
 - ALWAYS end your response with the YouTube URL: https://www.youtube.com/watch?v=${youtubeVideoInfo.id}
@@ -109,7 +121,7 @@ INSTRUCTIONS:
       signal: abortController.signal,
     };
 
-    console.log('[Chat Route] YouTube chat request config:', { model: groqModel, maxTokens });
+    console.log('[Chat Route] YouTube chat request config:', { model: groqModel, maxTokens, hasTranscript: !!transcript });
 
     return streamFromGroq(groqProvider, aiRequest, abortController, overallStart);
   } catch (error) {

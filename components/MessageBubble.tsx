@@ -897,6 +897,21 @@ export default function MessageBubble({ role, content, thinking, onEdit, isLoadi
   };
 
   const markdownComponents = useMemo(() => ({
+    img({ src, alt, ...props }: any) {
+      if (src) {
+        return (
+          <div className="my-4 rounded-lg overflow-hidden bg-neutral-900/50">
+            <img
+              src={src}
+              alt={alt || 'News image'}
+              className="w-full h-auto object-cover"
+              {...props}
+            />
+          </div>
+        );
+      }
+      return null;
+    },
     code({ node, inline, className, children, ...props }: any) {
       const match = /language-(\w+)/.exec(className || '');
       const language = match ? match[1] : 'plaintext';

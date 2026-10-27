@@ -56,49 +56,98 @@ function extractNewsQuery(message: string): string | null {
 }
 
 async function handleNewsChat(req: Request, messages: any[], lastUserMessage: string, query: string, overallStart: number) {
-  const apiKey = process.env.FREENEWSAPI_KEY;
+  const freeNewsApiKey = process.env.FREENEWSAPI_KEY;
+  const guardianApiKey = process.env.GUARDIAN_API_KEY;
   
-  if (!apiKey) {
-    console.log('[Chat Route] Free News API key not configured, proceeding with normal chat');
+  if (!freeNewsApiKey && !guardianApiKey) {
+    console.log('[Chat Route] No news API keys configured, proceeding with normal chat');
     return await handleNormalChat(req, messages, lastUserMessage, overallStart);
   }
 
   try {
-    // Build news API URL
-    let apiUrl = `https://api.freenewsapi.io/v1/news?language=en&country=US&order_by=recent&offset=0`;
-    
-    // Add search parameter if it's not a general query
-    if (query !== 'general') {
-      apiUrl += `&in_title=${encodeURIComponent(query)}`;
-    }
-    
-    console.log('[Chat Route] Fetching news from Free News API:', query);
-    
-    const response = await fetch(apiUrl, {
-      headers: {
-        'x-api-key': apiKey
-      }
-    });
-    
-    if (!response.ok) {
-      console.log('[Chat Route] News API failed, proceeding with normal chat');
-      return await handleNormalChat(req, messages, lastUserMessage, overallStart);
-    }
-    
-    const newsData = await response.json();
-    
-    // Format news data for the AI
     let newsInfo = `NEWS QUERY: ${query === 'general' ? 'Latest headlines' : query}\n\n`;
-    
-    if (newsData.data && newsData.data.length > 0) {
-      newsInfo += `FOUND ${newsData.data.length} ARTICLES:\n\n`;
-      newsData.data.slice(0, 5).forEach((article: any, index: number) => {
-        newsInfo += `${index + 1}. ${article.title}\n`;
-        newsInfo += `   Publisher: ${article.publisher}\n`;
-        newsInfo += `   Published: ${new Date(article.published_at).toLocaleDateString()}\n`;
-        newsInfo += `   UUID: ${article.uuid}\n\n`;
-      });
-    } else {
+    let articlesFound = false;
+
+    // Try Guardian API first (has full text, tags, and images)
+    if (guardianApiKey) {
+      try {
+        console.log('[Chat Route] Fetching news from Guardian API:', query);
+        let guardianUrl = `https://content.guardianapis.com/search?api-key=${guardianApiKey}&show-fields=trailText,thumbnail,bodyText,headline,byline&order-by=newest&page-size=5`;
+        
+        if (query !== 'general') {
+          guardianUrl += `&q=${encodeURIComponent(query)}`;
+        }
+        
+        const guardianResponse = await fetch(guardianUrl);
+        if (guardianResponse.ok) {
+          const guardianData = await guardianResponse.json();
+          
+          if (guardianData.response && guardianData.response.results && guardianData.response.results.length > 0) {
+            newsInfo += `FOUND ${guardianData.response.results.length} ARTICLES FROM THE GUARDIAN:\n\n`;
+            guardianData.response.results.forEach((article: any, index: number) => {
+              newsInfo += `${index + 1}. ${article.webTitle}\n`;
+              newsInfo += `   Publisher: The Guardian\n`;
+              newsInfo += `   Published: ${new Date(article.webPublicationDate).toLocaleDateString()}\n`;
+              newsInfo += `   URL: ${article.webUrl}\n`;
+              
+              if (article.fields && article.fields.thumbnail) {
+                newsInfo += `   Image: ${article.fields.thumbnail}\n`;
+              }
+              
+              if (article.fields && article.fields.trailText) {
+                newsInfo += `   Summary: ${article.fields.trailText}\n`;
+              }
+              
+              if (article.fields && article.fields.bodyText) {
+                newsInfo += `   Full Text Available: Yes\n`;
+              }
+              
+              newsInfo += `\n`;
+            });
+            articlesFound = true;
+          }
+        }
+      } catch (guardianError) {
+        console.log('[Chat Route] Guardian API failed, trying Free News API:', guardianError);
+      }
+    }
+
+    // Fallback to Free News API if Guardian didn't return results
+    if (!articlesFound && freeNewsApiKey) {
+      try {
+        console.log('[Chat Route] Fetching news from Free News API:', query);
+        let apiUrl = `https://api.freenewsapi.io/v1/news?language=en&country=US&order_by=recent&offset=0`;
+        
+        if (query !== 'general') {
+          apiUrl += `&in_title=${encodeURIComponent(query)}`;
+        }
+        
+        const response = await fetch(apiUrl, {
+          headers: {
+            'x-api-key': freeNewsApiKey
+          }
+        });
+        
+        if (response.ok) {
+          const newsData = await response.json();
+          
+          if (newsData.data && newsData.data.length > 0) {
+            newsInfo += `FOUND ${newsData.data.length} ARTICLES:\n\n`;
+            newsData.data.slice(0, 5).forEach((article: any, index: number) => {
+              newsInfo += `${index + 1}. ${article.title}\n`;
+              newsInfo += `   Publisher: ${article.publisher}\n`;
+              newsInfo += `   Published: ${new Date(article.published_at).toLocaleDateString()}\n`;
+              newsInfo += `   UUID: ${article.uuid}\n\n`;
+            });
+            articlesFound = true;
+          }
+        }
+      } catch (freeNewsError) {
+        console.log('[Chat Route] Free News API failed:', freeNewsError);
+      }
+    }
+
+    if (!articlesFound) {
       newsInfo += 'No articles found matching your query.\n';
     }
     
@@ -122,7 +171,8 @@ INSTRUCTIONS:
 - Provide context about what's happening
 - Be conversational and helpful
 - Mention the publication date and source for each story
-- You can fetch full article details using the UUID if needed`;
+- If article images are available, include them in your response using markdown image syntax: ![alt text](url)
+- You can fetch full article details using the UUID or URL if needed`;
 
     const SYSTEM_PROMPT: Message = {
       role: "system",
@@ -145,8 +195,66 @@ INSTRUCTIONS:
 
     console.log('[Chat Route] News chat request:', { query, model: groqModel });
 
+    // Use the same streaming approach as handleNormalChat
+    const SYSTEM_PROMPT: Message = {
+      role: "system",
+      content: NEWS_SYSTEM_PROMPT
+    };
+
+    const payloadMessages = [SYSTEM_PROMPT, ...messages.slice(-1)];
+    
+    const groqModel = 'qwen/qwen3.8-27b';
+    const temperature = 0.7;
+    const maxTokens = 4096;
+
+    const aiRequest = {
+      model: groqModel,
+      messages: payloadMessages,
+      temperature,
+      max_tokens: maxTokens,
+      stream: true,
+    };
+
+    // Inline streaming (same as handleNormalChat)
+    const { GroqProvider } = await import('../../../lib/ai/providers/groq');
+    const groqApiKey = process.env.GROQ_API_KEY;
+    const groqProvider = new GroqProvider(groqApiKey);
     const abortController = new AbortController();
-    return streamFromGroq('groq', aiRequest, abortController, overallStart);
+    
+    const encoder = new TextEncoder();
+    let streamClosed = false;
+
+    const stream = new ReadableStream({
+      async start(controller) {
+        const originalClose = controller.close.bind(controller);
+        controller.close = () => {
+          streamClosed = true;
+          abortController.abort();
+          originalClose();
+        };
+
+        try {
+          for await (const chunk of groqProvider.stream(aiRequest)) {
+            if (streamClosed) break;
+            if (chunk.type === 'text' && chunk.content) {
+              controller.enqueue(encoder.encode(chunk.content));
+            }
+          }
+        } catch (error) {
+          console.error('[Chat Route] Stream error:', error);
+        } finally {
+          controller.close();
+        }
+      }
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive",
+      },
+    });
     
   } catch (error) {
     console.error('[Chat Route] News chat error:', error);

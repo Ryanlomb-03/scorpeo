@@ -47,14 +47,16 @@ export async function POST(req: Request) {
 
 async function handleYouTubeChat(req: Request, messages: any[], lastUserMessage: string, youtubeVideoInfo: any, overallStart: number, transcript?: string) {
   // Use transcript provided by client (fetched via Pyodide to avoid IP blocking)
-  if (!transcript) {
-    console.log('[Chat Route] No transcript provided, but will use empty - client will fetch');
-    transcript = '';
+  // If no transcript or empty, fall back to description
+  if (!transcript || transcript.length === 0) {
+    console.log('[Chat Route] No transcript provided, using description as fallback');
+    const description = youtubeVideoInfo.description || '';
+    transcript = description.replace(/https?:\/\/[^\s]+/g, '').replace(/\n+/g, '\n').trim();
   } else {
     console.log('[Chat Route] Using transcript from client, length:', transcript.length);
   }
 
-  // Build system prompt with full transcript
+  // Build system prompt with transcript or description
   let YOUTUBE_SYSTEM_PROMPT = `You are Scorpeo, a helpful AI assistant. The user shared a YouTube video and is asking you about it.
 
 VIDEO INFORMATION:
@@ -64,15 +66,15 @@ Duration: ${formatDuration(youtubeVideoInfo.duration)}
 Views: ${youtubeVideoInfo.viewCount.toLocaleString()}
 Published: ${new Date(youtubeVideoInfo.publishedAt).toLocaleDateString()}
 
-VIDEO TRANSCRIPT:
+VIDEO CONTENT:
 ${transcript}
 
 INSTRUCTIONS:
 - The video player is visible to the user so they can watch it along with your response
 - DO NOT say you can't access the video or that you don't know what's in it
-- Use the FULL transcript above to provide detailed insights about the video's content
-- If the user asks "what is he saying?" or "what's the video about?", provide a comprehensive summary using the transcript
-- Extract and list key points, main arguments, and important details from the transcript
+- Use the content above to provide detailed insights about the video's content
+- If the user asks "what is he saying?" or "what's the video about?", provide a comprehensive summary
+- Extract and list key points, main arguments, and important details
 - When discussing specific topics or key points, include timestamps in the format [MM:SS] (single timestamp, not ranges)
 - Format your response as bullet points when listing multiple topics
 - ALWAYS end your response with the YouTube URL: https://www.youtube.com/watch?v=${youtubeVideoInfo.id}

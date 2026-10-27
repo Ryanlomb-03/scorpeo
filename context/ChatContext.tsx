@@ -284,12 +284,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   // Fetch YouTube transcript using Pyodide (client-side Python)
   const fetchYouTubeTranscript = async (videoId: string): Promise<string | null> => {
     if (!pyodideLoaded || !pyodideRef.current) {
-      console.log('[ChatContext] Pyodide not loaded, skipping transcript fetch');
+      console.log('[ChatContext] Pyodide not loaded, skipping transcript fetch', { pyodideLoaded, hasRef: !!pyodideRef.current });
       return null;
     }
 
     try {
       const pyodide = pyodideRef.current;
+      console.log('[ChatContext] Running Python code to fetch transcript for:', videoId);
+      
       const transcriptCode = `
 from youtube_transcript_api import YouTubeTranscriptApi
 
@@ -297,19 +299,20 @@ try:
     api = YouTubeTranscriptApi()
     transcript = api.fetch("${videoId}", languages=['en'])
     transcript_text = ' '.join([snippet.text for snippet in transcript])
-    result = {"success": True, "transcript": transcript_text}
+    result = {"success": True, "transcript": transcript_text, "length": len(transcript_text)}
 except Exception as e:
-    result = {"success": False, "error": str(e)}
+    result = {"success": False, "error": str(e), "error_type": str(type(e).__name__)}
 result
       `;
 
       const result = await pyodide.runPythonAsync(transcriptCode);
+      console.log('[ChatContext] Python execution result:', result);
       
       if (result.success && result.transcript) {
         console.log('[ChatContext] Transcript fetched successfully, length:', result.transcript.length);
         return result.transcript;
       } else {
-        console.log('[ChatContext] Transcript fetch failed:', result.error);
+        console.log('[ChatContext] Transcript fetch failed:', result.error, result.error_type);
         return null;
       }
     } catch (error) {
@@ -524,7 +527,9 @@ result
       let transcript = null;
       const videoId = extractVideoId(content);
       if (videoId) {
-        console.log('[ChatContext] YouTube URL detected, waiting for Pyodide to load...');
+        console.log('[ChatContext] YouTube URL detected, videoId:', videoId);
+        console.log('[ChatContext] Pyodide status:', { pyodideLoaded, hasRef: !!pyodideRef.current });
+        
         // Wait for Pyodide to load if not ready (with timeout)
         if (!pyodideLoaded) {
           console.log('[ChatContext] Pyodide not loaded, waiting...');

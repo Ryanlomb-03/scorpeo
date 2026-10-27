@@ -47,7 +47,7 @@ export async function POST(req: Request) {
 
 async function handleYouTubeChat(req: Request, messages: any[], lastUserMessage: string, youtubeVideoInfo: any, overallStart: number, transcript?: string) {
   // Try to fetch transcript using YouTube Data API
-  let videoTranscript = transcript;
+  let videoTranscript: string = transcript || '';
   
   if (!videoTranscript && process.env.YOUTUBE_API_KEY) {
     try {
@@ -83,9 +83,6 @@ async function handleYouTubeChat(req: Request, messages: any[], lastUserMessage:
     console.log('[Chat Route] Using transcript, length:', videoTranscript.length);
   }
 
-  // Ensure videoTranscript is a string
-  const finalTranscript = videoTranscript || '';
-
   // Build system prompt with transcript or description
   let YOUTUBE_SYSTEM_PROMPT = `You are Scorpeo, a helpful AI assistant. The user shared a YouTube video and is asking you about it.
 
@@ -97,7 +94,7 @@ Views: ${youtubeVideoInfo.viewCount.toLocaleString()}
 Published: ${new Date(youtubeVideoInfo.publishedAt).toLocaleDateString()}
 
 VIDEO CONTENT:
-${finalTranscript}
+${videoTranscript}
 
 INSTRUCTIONS:
 - The video player is visible to the user so they can watch it along with your response

@@ -96,28 +96,6 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const guestUserId = useRef<string>("guest-user");
   const updateBufferRef = useRef<string>("");
   const animationFrameId = useRef<number | null>(null);
-  const pyodideRef = useRef<any>(null);
-  const [pyodideLoaded, setPyodideLoaded] = useState(false);
-
-  // Load Pyodide for client-side Python execution (only on client side)
-  useEffect(() => {
-    if (typeof window === 'undefined') return; // Skip on server
-    
-    const loadPyodideLib = async () => {
-      try {
-        const { loadPyodide } = await import('pyodide');
-        const pyodide = await loadPyodide() as any;
-        await pyodide.loadPackage("micropip");
-        await pyodide.installPackage("youtube-transcript-api");
-        pyodideRef.current = pyodide;
-        setPyodideLoaded(true);
-        console.log('[ChatContext] Pyodide loaded successfully');
-      } catch (error) {
-        console.error('[ChatContext] Pyodide failed to load:', error);
-      }
-    };
-    loadPyodideLib();
-  }, []);
   const thinkingBufferRef = useRef<string>("");
   const textBufferRef = useRef<string>("");
   const lastUpdateTimeRef = useRef<number>(0);
@@ -279,53 +257,6 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       console.error("Failed to generate AI title, keeping provisional title:", error);
       // Keep provisional title on failure - don't break the chat
     }
-  };
-
-  // Fetch YouTube transcript using Pyodide (client-side Python)
-  const fetchYouTubeTranscript = async (videoId: string): Promise<string | null> => {
-    if (!pyodideLoaded || !pyodideRef.current) {
-      console.log('[ChatContext] Pyodide not loaded, skipping transcript fetch', { pyodideLoaded, hasRef: !!pyodideRef.current });
-      return null;
-    }
-
-    try {
-      const pyodide = pyodideRef.current;
-      console.log('[ChatContext] Running Python code to fetch transcript for:', videoId);
-      
-      const transcriptCode = `
-from youtube_transcript_api import YouTubeTranscriptApi
-
-try:
-    api = YouTubeTranscriptApi()
-    transcript = api.fetch("${videoId}", languages=['en'])
-    transcript_text = ' '.join([snippet.text for snippet in transcript])
-    result = {"success": True, "transcript": transcript_text, "length": len(transcript_text)}
-except Exception as e:
-    result = {"success": False, "error": str(e), "error_type": str(type(e).__name__)}
-result
-      `;
-
-      const result = await pyodide.runPythonAsync(transcriptCode);
-      console.log('[ChatContext] Python execution result:', result);
-      
-      if (result.success && result.transcript) {
-        console.log('[ChatContext] Transcript fetched successfully, length:', result.transcript.length);
-        return result.transcript;
-      } else {
-        console.log('[ChatContext] Transcript fetch failed:', result.error, result.error_type);
-        return null;
-      }
-    } catch (error) {
-      console.error('[ChatContext] Transcript fetch error:', error);
-      return null;
-    }
-  };
-
-  // Extract YouTube video ID from text
-  const extractVideoId = (text: string): string | null => {
-    const youtubeRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
-    const match = text.match(youtubeRegex);
-    return match ? match[1] : null;
   };
 
   const sendMessage = async (content: string, onChunk?: (chunk: string) => void) => {
@@ -522,39 +453,6 @@ result
         // Start background title generation with typewriter effect
         generateAndTypeTitle(convId, content);
       }
-
-      // Check for YouTube URL and fetch transcript if Pyodide is loaded
-      let transcript = null;
-      const videoId = extractVideoId(content);
-      if (videoId) {
-        console.log('[ChatContext] YouTube URL detected, videoId:', videoId);
-        console.log('[ChatContext] Pyodide status:', { pyodideLoaded, hasRef: !!pyodideRef.current });
-        
-        // Wait for Pyodide to load if not ready (with timeout)
-        if (!pyodideLoaded) {
-          console.log('[ChatContext] Pyodide not loaded, waiting...');
-          await new Promise<void>((resolve) => {
-            const checkInterval = setInterval(() => {
-              if (pyodideLoaded) {
-                clearInterval(checkInterval);
-                resolve();
-              }
-            }, 100);
-            // Timeout after 10 seconds
-            setTimeout(() => {
-              clearInterval(checkInterval);
-              resolve();
-            }, 10000);
-          });
-        }
-        if (pyodideLoaded) {
-          console.log('[ChatContext] Pyodide loaded, fetching transcript...');
-          transcript = await fetchYouTubeTranscript(videoId);
-          console.log('[ChatContext] Transcript result:', transcript ? `Found (${transcript.length} chars)` : 'Not found');
-        } else {
-          console.log('[ChatContext] Pyodide failed to load in time, skipping transcript');
-        }
-      }
       
       const chatRes = await fetch("/api/chat", {
         method: "POST",
@@ -563,9 +461,7 @@ result
           messages: [
             ...messages.map(m => ({ role: m.role, content: m.content })),
             { role: "user", content }
-          ],
-          transcript: transcript,
-          videoId: videoId
+          ]
         })
       });
       

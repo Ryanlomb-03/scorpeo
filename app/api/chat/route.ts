@@ -46,14 +46,41 @@ export async function POST(req: Request) {
 }
 
 async function handleYouTubeChat(req: Request, messages: any[], lastUserMessage: string, youtubeVideoInfo: any, overallStart: number, transcript?: string) {
-  // Use transcript provided by client (fetched via Pyodide to avoid IP blocking)
-  // If no transcript or empty, fall back to description
-  if (!transcript || transcript.length === 0) {
-    console.log('[Chat Route] No transcript provided, using description as fallback');
+  // Try to fetch transcript using YouTube Data API
+  let videoTranscript = transcript;
+  
+  if (!videoTranscript && process.env.YOUTUBE_API_KEY) {
+    try {
+      console.log('[Chat Route] Fetching transcript from YouTube Data API');
+      const response = await fetch(`https://www.googleapis.com/youtube/v3/captions?part=snippet&videoId=${youtubeVideoInfo.id}&key=${process.env.YOUTUBE_API_KEY}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.items && data.items.length > 0) {
+          // For caption track, we need to download the actual caption content
+          const captionId = data.items[0].id;
+          const captionResponse = await fetch(`https://www.googleapis.com/youtube/v3/captions/${captionId}?key=${process.env.YOUTUBE_API_KEY}`);
+          if (captionResponse.ok) {
+            const captionData = await captionResponse.json();
+            // Decode caption content if available
+            if (captionData.snippet?.simple) {
+              videoTranscript = captionData.snippet.simple;
+              console.log('[Chat Route] Transcript fetched from YouTube Data API, length:', videoTranscript.length);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.log('[Chat Route] YouTube Data API transcript fetch failed:', error);
+    }
+  }
+
+  // If no transcript from API, use description
+  if (!videoTranscript) {
+    console.log('[Chat Route] No transcript from API, using description');
     const description = youtubeVideoInfo.description || '';
-    transcript = description.replace(/https?:\/\/[^\s]+/g, '').replace(/\n+/g, '\n').trim();
+    videoTranscript = description.replace(/https?:\/\/[^\s]+/g, '').replace(/\n+/g, '\n').trim();
   } else {
-    console.log('[Chat Route] Using transcript from client, length:', transcript.length);
+    console.log('[Chat Route] Using transcript, length:', videoTranscript.length);
   }
 
   // Build system prompt with transcript or description
@@ -67,7 +94,7 @@ Views: ${youtubeVideoInfo.viewCount.toLocaleString()}
 Published: ${new Date(youtubeVideoInfo.publishedAt).toLocaleDateString()}
 
 VIDEO CONTENT:
-${transcript}
+${videoTranscript}
 
 INSTRUCTIONS:
 - The video player is visible to the user so they can watch it along with your response

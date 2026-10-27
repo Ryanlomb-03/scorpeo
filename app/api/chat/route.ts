@@ -22,7 +22,7 @@ interface WikiCardData {
 
 export async function POST(req: Request) {
   const overallStart = Date.now();
-  const { messages } = await req.json();
+  const { messages, transcript, videoId } = await req.json();
   const lastUserMessage = messages[messages.length - 1]?.content || "";
   
   // Detect YouTube URLs in the message
@@ -39,7 +39,6 @@ export async function POST(req: Request) {
 
   // Route to appropriate handler based on content type
   if (youtubeVideoId && youtubeVideoInfo) {
-    const transcript = body.transcript || null;
     return await handleYouTubeChat(req, messages, lastUserMessage, youtubeVideoInfo, overallStart, transcript);
   }
   

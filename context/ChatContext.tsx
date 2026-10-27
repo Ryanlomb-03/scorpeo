@@ -106,7 +106,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       try {
         const pyodide = await loadPyodide({
           indexURL: "https://cdn.jsdelivr.net/pyodide/v0.23.4/full/"
-        });
+        }) as any;
         await pyodide.loadPackage("micropip");
         await pyodide.installPackage("youtube-transcript-api");
         pyodideRef.current = pyodide;

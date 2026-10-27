@@ -1039,9 +1039,6 @@ export default function MessageBubble({ role, content, thinking, onEdit, isLoadi
         </>
       );
     },
-        </>
-      );
-    },
     // Inline semantic markers (with graded severity colors)
     'semantic-danger': () => {
       return <ShieldAlert className="w-4 h-4 inline-block mr-1.5 text-rose-500 animate-pulse" />;

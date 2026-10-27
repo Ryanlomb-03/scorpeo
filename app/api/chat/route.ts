@@ -109,7 +109,7 @@ INSTRUCTIONS:
       signal: abortController.signal,
     };
 
-    console.log('[Chat Route] YouTube chat request config:', { model: groqModel, maxTokens, hasTranscript: !!transcript });
+    console.log('[Chat Route] YouTube chat request config:', { model: groqModel, maxTokens });
 
     return streamFromGroq(groqProvider, aiRequest, abortController, overallStart);
   } catch (error) {

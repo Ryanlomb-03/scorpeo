@@ -920,19 +920,98 @@ export default function MessageBubble({ role, content, thinking, onEdit, isLoadi
         </code>
       );
     },
-    // Handle text nodes to make timestamps clickable
+    // Handle text nodes to make timestamps clickable and style dictionary terms
     text({ children }: any) {
       const text = String(children);
+      
+      // Check for pronunciation markers: /.../ or PRONUNCIATION: ... or standalone IPA characters
+      const pronunciationRegex = /\/([^/]+)\/|PRONUNCIATION:\s*([^\n]+)/gi;
+      const pronunciationMatch = text.match(pronunciationRegex);
+      
+      // Check for standalone IPA characters (contains IPA symbols like əˈləʊ)
+      const ipaRegex = /[əˈæɒɔʊɪɪɛɜʃʒʧθðŋɡʤʒwɾj]+/i;
+      const ipaMatch = text.match(ipaRegex);
+      
+      // Check for example markers: Example: "..." or EXAMPLE:
+      const exampleRegex = /(?:Example:|EXAMPLE:)\s*"([^"]+)"/gi;
+      const exampleMatch = text.match(exampleRegex);
+      
+      // Check for timestamps
       const timestampRegex = /\[(\d{1,2}:\d{2})\]/g;
-      const parts = text.split(timestampRegex);
+      const timestampMatch = text.match(timestampRegex);
 
-      if (parts.length === 1) {
+      // Handle pronunciation with slashes or PRONUNCIATION label
+      if (pronunciationMatch && !timestampMatch) {
+        const parts = text.split(pronunciationRegex);
+        return (
+          <>
+            {parts.map((part, index) => {
+              if (index % 2 === 1) {
+                // This is a pronunciation match
+                const pronunciation = part.replace(pronunciationRegex, '$1$2');
+                return (
+                  <span key={index} className="font-serif italic text-purple-300 text-lg" style={{ fontFamily: 'Georgia, serif' }}>
+                    /{pronunciation}/
+                  </span>
+                );
+              }
+              return <span key={index}>{part}</span>;
+            })}
+          </>
+        );
+      }
+
+      // Handle standalone IPA characters (like həˈləʊ)
+      if (ipaMatch && !timestampMatch && !pronunciationMatch) {
+        const parts = text.split(ipaRegex);
+        return (
+          <>
+            {parts.map((part, index) => {
+              if (index % 2 === 1) {
+                // This is an IPA match
+                return (
+                  <span key={index} className="font-serif italic text-purple-300 text-lg" style={{ fontFamily: 'Georgia, serif' }}>
+                    {part}
+                  </span>
+                );
+              }
+              return <span key={index}>{part}</span>;
+            })}
+          </>
+        );
+      }
+
+      // Handle examples
+      if (exampleMatch && !timestampMatch) {
+        const parts = text.split(exampleRegex);
+        return (
+          <>
+            {parts.map((part, index) => {
+              if (index % 2 === 1) {
+                // This is an example match
+                const example = part.replace(exampleRegex, '$1');
+                return (
+                  <span key={index} className="font-mono text-green-300 bg-neutral-800/50 px-2 py-1 rounded" style={{ fontFamily: 'Courier New, monospace' }}>
+                    "{example}"
+                  </span>
+                );
+              }
+              return <span key={index}>{part}</span>;
+            })}
+          </>
+        );
+      }
+
+      // Handle timestamps (existing logic)
+      const timestampParts = text.split(timestampRegex);
+
+      if (timestampParts.length === 1) {
         return <>{text}</>;
       }
 
       return (
         <>
-          {parts.map((part, index) => {
+          {timestampParts.map((part, index) => {
             // Even indices are regular text, odd indices are timestamps
             if (index % 2 === 1 && youtubeVideoData) {
               const [mins, secs] = part.split(':').map(Number);
@@ -957,6 +1036,9 @@ export default function MessageBubble({ role, content, thinking, onEdit, isLoadi
             }
             return <span key={index}>{part}</span>;
           })}
+        </>
+      );
+    },
         </>
       );
     },

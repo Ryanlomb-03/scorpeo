@@ -7,6 +7,154 @@ import { STUDY_METHODS_OPEN_TAG, STUDY_METHODS_CLOSE_TAG, TIMETABLE_OPEN_TAG, TI
 import { trimPrompt, trimToTokenLimit } from '@/lib/promptTrimmer';
 import { extractVideoId, getVideoInfo, formatDuration } from '@/lib/youtube';
 
+// Extract word for dictionary lookup
+function extractWordForDictionary(message: string): string | null {
+  const lower = message.toLowerCase();
+  
+  // Patterns for dictionary queries
+  const patterns = [
+    /(?:pronounce|pronunciation|define|definition|meaning|synonym|antonym|etymology|spell)\s+(?:of\s+)?["'`]?([a-zA-Z]{2,})["'`]?/i,
+    /(?:how do you say|how to pronounce)\s+(?:the word\s+)?["'`]?([a-zA-Z]{2,})["'`]?/i,
+    /(?:what does|what's the meaning of)\s+(?:the word\s+)?["'`]?([a-zA-Z]{2,})["'`]?\s+mean/i,
+    /(?:dictionary|lookup)\s+(?:for\s+)?["'`]?([a-zA-Z]{2,})["'`]?/i,
+  ];
+  
+  for (const pattern of patterns) {
+    const match = message.match(pattern);
+    if (match && match[1]) {
+      return match[1];
+    }
+  }
+  
+  // Check if message is just a single word
+  if (/^[a-zA-Z]{2,}$/.test(message.trim())) {
+    return message.trim();
+  }
+  
+  return null;
+}
+
+// Extract news query
+function extractNewsQuery(message: string): string | null {
+  const lower = message.toLowerCase();
+  
+  // Very aggressive check - if ANY of these keywords are present, treat as news
+  const newsKeywords = ['news', 'stories', 'headlines', 'latest', 'recent', 'today', 'technology', 'tech', 'ai', 'recent stories'];
+  
+  for (const keyword of newsKeywords) {
+    if (lower.includes(keyword)) {
+      // Extract topic after the keyword
+      const index = lower.indexOf(keyword);
+      const afterKeyword = message.substring(index + keyword.length).trim();
+      // Remove filler words
+      const topic = afterKeyword.replace(/^(about|on|in|for|the|a|an)\s+/i, '').trim();
+      return topic || 'general';
+    }
+  }
+  
+  return null;
+}
+
+async function handleNewsChat(req: Request, messages: any[], lastUserMessage: string, query: string, overallStart: number) {
+  const apiKey = process.env.FREENEWSAPI_KEY;
+  
+  if (!apiKey) {
+    console.log('[Chat Route] Free News API key not configured, proceeding with normal chat');
+    return await handleNormalChat(req, messages, lastUserMessage, overallStart);
+  }
+
+  try {
+    // Build news API URL
+    let apiUrl = `https://api.freenewsapi.io/v1/news?language=en&country=US&order_by=recent&offset=0`;
+    
+    // Add search parameter if it's not a general query
+    if (query !== 'general') {
+      apiUrl += `&in_title=${encodeURIComponent(query)}`;
+    }
+    
+    console.log('[Chat Route] Fetching news from Free News API:', query);
+    
+    const response = await fetch(apiUrl, {
+      headers: {
+        'x-api-key': apiKey
+      }
+    });
+    
+    if (!response.ok) {
+      console.log('[Chat Route] News API failed, proceeding with normal chat');
+      return await handleNormalChat(req, messages, lastUserMessage, overallStart);
+    }
+    
+    const newsData = await response.json();
+    
+    // Format news data for the AI
+    let newsInfo = `NEWS QUERY: ${query === 'general' ? 'Latest headlines' : query}\n\n`;
+    
+    if (newsData.data && newsData.data.length > 0) {
+      newsInfo += `FOUND ${newsData.data.length} ARTICLES:\n\n`;
+      newsData.data.slice(0, 5).forEach((article: any, index: number) => {
+        newsInfo += `${index + 1}. ${article.title}\n`;
+        newsInfo += `   Publisher: ${article.publisher}\n`;
+        newsInfo += `   Published: ${new Date(article.published_at).toLocaleDateString()}\n`;
+        newsInfo += `   UUID: ${article.uuid}\n\n`;
+      });
+    } else {
+      newsInfo += 'No articles found matching your query.\n';
+    }
+    
+    console.log('[Chat Route] News info fetched for:', query);
+    
+    // Build system prompt with news info
+    const currentDate = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const currentTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    
+    const NEWS_SYSTEM_PROMPT = `You are Scorpeo, a helpful AI assistant. The user is asking about current news.
+
+CURRENT DATE: ${currentDate}
+CURRENT TIME: ${currentTime}
+
+${newsInfo}
+
+INSTRUCTIONS:
+- Use the news information above to provide current news updates
+- Summarize the key stories
+- If the user asked about a specific topic, focus on relevant articles
+- Provide context about what's happening
+- Be conversational and helpful
+- Mention the publication date and source for each story
+- You can fetch full article details using the UUID if needed`;
+
+    const SYSTEM_PROMPT: Message = {
+      role: "system",
+      content: NEWS_SYSTEM_PROMPT
+    };
+
+    const payloadMessages = [SYSTEM_PROMPT, ...messages.slice(-1)];
+    
+    const groqModel = 'qwen/qwen3.8-27b';
+    const temperature = 0.7;
+    const maxTokens = 4096;
+
+    const aiRequest = {
+      model: groqModel,
+      messages: payloadMessages,
+      temperature,
+      max_tokens: maxTokens,
+      stream: true,
+    };
+
+    console.log('[Chat Route] News chat request:', { query, model: groqModel });
+
+    const abortController = new AbortController();
+    return streamFromGroq('groq', aiRequest, abortController, overallStart);
+    
+  } catch (error) {
+    console.error('[Chat Route] News chat error:', error);
+    // Fallback to normal chat on error
+    return await handleNormalChat(req, messages, lastUserMessage, overallStart);
+  }
+}
+
 interface Message {
   role: string;
   content: string;
@@ -37,12 +185,136 @@ export async function POST(req: Request) {
     }
   }
 
+  // Detect dictionary lookup queries
+  const wordToLookup = extractWordForDictionary(lastUserMessage);
+  if (wordToLookup) {
+    console.log('[Chat Route] Dictionary lookup detected for word:', wordToLookup);
+    return await handleDictionaryChat(req, messages, lastUserMessage, wordToLookup, overallStart);
+  }
+
+  // Detect news lookup queries - BEFORE YouTube to prioritize news
+  const newsQuery = extractNewsQuery(lastUserMessage);
+  console.log('[Chat Route] News query check:', { message: lastUserMessage, newsQuery });
+  if (newsQuery) {
+    console.log('[Chat Route] News lookup detected for query:', newsQuery);
+    return await handleNewsChat(req, messages, lastUserMessage, newsQuery, overallStart);
+  }
+
   // Route to appropriate handler based on content type
   if (youtubeVideoId && youtubeVideoInfo) {
     return await handleYouTubeChat(req, messages, lastUserMessage, youtubeVideoInfo, overallStart, transcript);
   }
   
   return await handleNormalChat(req, messages, lastUserMessage, overallStart);
+}
+
+async function handleDictionaryChat(req: Request, messages: any[], lastUserMessage: string, word: string, overallStart: number) {
+  try {
+    // Fetch word definition from Free Dictionary API
+    const response = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`);
+    
+    if (!response.ok) {
+      // If rate limited or error, proceed with normal chat but inform the AI
+      console.log('[Chat Route] Dictionary API failed, proceeding with normal chat');
+      return await handleNormalChat(req, messages, lastUserMessage, overallStart);
+    }
+    
+    const dictionaryData = await response.json();
+    
+    // Format dictionary data for the AI
+    let dictionaryInfo = `WORD: ${word}\n\n`;
+    
+    if (dictionaryData && dictionaryData.length > 0) {
+      const entry = dictionaryData[0];
+      
+      // Phonetic/ pronunciation
+      if (entry.phonetic) {
+        dictionaryInfo += `PRONUNCIATION: ${entry.phonetic}\n`;
+      }
+      
+      if (entry.phonetics && entry.phonetics.length > 0) {
+        const audioUrl = entry.phonetics.find(p => p.audio)?.audio;
+        if (audioUrl) {
+          dictionaryInfo += `AUDIO: ${audioUrl}\n`;
+        }
+      }
+      
+      // Meanings/definitions
+      if (entry.meanings && entry.meanings.length > 0) {
+        dictionaryInfo += `\nDEFINITIONS:\n`;
+        entry.meanings.forEach((meaning: any, index: number) => {
+          dictionaryInfo += `\n${meaning.partOfSpeech.toUpperCase()}:\n`;
+          meaning.definitions.slice(0, 3).forEach((def: any, defIndex: number) => {
+            dictionaryInfo += `  ${defIndex + 1}. ${def.definition}\n`;
+            if (def.example) {
+              dictionaryInfo += `     Example: "${def.example}"\n`;
+            }
+            if (def.synonyms && def.synonyms.length > 0) {
+              dictionaryInfo += `     Synonyms: ${def.synonyms.slice(0, 5).join(', ')}\n`;
+            }
+            if (def.antonyms && def.antonyms.length > 0) {
+              dictionaryInfo += `     Antonyms: ${def.antonyms.slice(0, 5).join(', ')}\n`;
+            }
+          });
+        });
+      }
+      
+      // Origin/Etymology
+      if (entry.origin) {
+        dictionaryInfo += `\nETYMOLOGY: ${entry.origin}\n`;
+      }
+    }
+    
+    console.log('[Chat Route] Dictionary info fetched for:', word);
+    
+    // Build system prompt with dictionary info
+    const currentDate = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const currentTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    
+    const DICTIONARY_SYSTEM_PROMPT = `You are Scorpeo, a helpful AI assistant. The user is asking about a word.
+
+CURRENT DATE: ${currentDate}
+CURRENT TIME: ${currentTime}
+
+${dictionaryInfo}
+
+INSTRUCTIONS:
+- Use the dictionary information above to provide a comprehensive answer about the word
+- Include pronunciation, definitions, examples, synonyms, and antonyms
+- If the user asked about pronunciation specifically, focus on that
+- If the user asked about synonyms or antonyms, focus on those
+- Be conversational and helpful
+- You can add additional context or usage examples beyond what's in the dictionary`;
+
+    const SYSTEM_PROMPT: Message = {
+      role: "system",
+      content: DICTIONARY_SYSTEM_PROMPT
+    };
+
+    const payloadMessages = [SYSTEM_PROMPT, ...messages.slice(-1)];
+    
+    const groqModel = 'qwen/qwen3.8-27b';
+    const temperature = 0.7;
+    const maxTokens = 4096;
+
+    const aiRequest = {
+      model: groqModel,
+      messages: payloadMessages,
+      temperature,
+      max_tokens: maxTokens,
+      stream: true,
+    };
+
+    console.log('[Chat Route] Dictionary chat request:', { word, model: groqModel });
+
+    const abortController = new AbortController();
+    return streamFromGroq('groq', aiRequest, abortController, overallStart);
+    
+  } catch (error) {
+    console.error('[Chat Route] Dictionary chat error:', error);
+    // Fallback to normal chat on error
+    return await handleNormalChat(req, messages, lastUserMessage, overallStart);
+  }
 }
 
 async function handleYouTubeChat(req: Request, messages: any[], lastUserMessage: string, youtubeVideoInfo: any, overallStart: number, transcript?: string) {
@@ -275,7 +547,13 @@ Source: ${retrieval.data.url}`;
     : '';
 
   // 4. Combine into master system prompt using Scorpeo Core
+  const currentDate = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const currentTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  
   let fullSystemPrompt = `${SCORPEO_CORE_PROMPT}
+
+CURRENT DATE: ${currentDate}
+CURRENT TIME: ${currentTime}
 
 ${artifactInstructions}${wikiContext}${modeInstruction}`;
 

@@ -16,6 +16,8 @@ export type UserIntent =
   | "edit_artifact"
   | "transform_content"
   | "execute_or_calculate"
+  | "dictionary_lookup"
+  | "news_lookup"
   | "ambiguous";
 
 export type KnowledgeStrategy =
@@ -196,6 +198,26 @@ export class FastIntentDetection {
       confidence = calculateConfidence(imageKeywords, lower);
       toolInstructions = 'The user wants to visualize something. If image generation is available, offer to create an image. Otherwise, describe the visual in detail or suggest finding reference images.';
       shouldShowCard = true;
+    }
+
+    // Dictionary lookup detection
+    const dictionaryKeywords = ['pronunciation', 'define', 'meaning', 'definition', 'synonym', 'antonym', 'how do you say', 'how to pronounce', 'what does .* mean', 'dictionary', 'spell', 'etymology'];
+    if (dictionaryKeywords.some(k => new RegExp(k, 'i').test(lower))) {
+      intent = 'dictionary_lookup';
+      confidence = 0.8;
+      toolInstructions = 'The user is asking about a word - definition, pronunciation, synonyms, etc. Use the dictionary tool to provide comprehensive word information.';
+      shouldShowCard = true;
+      knowledgeLevel = 1;
+    }
+
+    // News lookup detection
+    const newsKeywords = ['news', 'current events', 'breaking news', 'latest news', 'today in', 'what happened', 'headlines', 'recent', 'today', 'yesterday', 'latest'];
+    if (newsKeywords.some(k => lower.includes(k))) {
+      intent = 'news_lookup';
+      confidence = 0.8;
+      toolInstructions = 'The user is asking about current news or recent events. Use the news API to fetch real-time news.';
+      shouldShowCard = true;
+      knowledgeLevel = 2;
       knowledgeLevel = 1;
     }
 

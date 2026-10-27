@@ -39,33 +39,21 @@ export async function POST(req: Request) {
 
   // Route to appropriate handler based on content type
   if (youtubeVideoId && youtubeVideoInfo) {
-    return await handleYouTubeChat(req, messages, lastUserMessage, youtubeVideoInfo, overallStart);
+    const transcript = body.transcript || null;
+    return await handleYouTubeChat(req, messages, lastUserMessage, youtubeVideoInfo, overallStart, transcript);
   }
   
   return await handleNormalChat(req, messages, lastUserMessage, overallStart);
 }
 
-async function handleYouTubeChat(req: Request, messages: any[], lastUserMessage: string, youtubeVideoInfo: any, overallStart: number) {
-  // Fetch transcript using YouTube Data API
-  let transcript = null;
-  try {
-    const apiKey = process.env.YOUTUBE_API_KEY;
-    if (apiKey) {
-      const response = await fetch(`https://www.googleapis.com/youtube/v3/captions?part=snippet&videoId=${youtubeVideoInfo.id}&key=${apiKey}`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data.items && data.items.length > 0) {
-          // Combine all caption segments
-          const captionText = data.items
-            .map((item: any) => item.snippet)
-            .join(' ');
-          transcript = captionText;
-          console.log('[Chat Route] Transcript fetched successfully from YouTube Data API');
-        }
-      }
-    }
-  } catch (error) {
-    console.log('[Chat Route] Transcript fetch error, using description instead:', error);
+async function handleYouTubeChat(req: Request, messages: any[], lastUserMessage: string, youtubeVideoInfo: any, overallStart: number, transcript?: string) {
+  // Use transcript provided by client (fetched via Pyodide to avoid IP blocking)
+  // If no transcript provided, fall back to description
+  if (!transcript) {
+    console.log('[Chat Route] No transcript provided, using description');
+    transcript = youtubeVideoInfo.description || '';
+  } else {
+    console.log('[Chat Route] Using transcript from client, length:', transcript.length);
   }
 
   // Build system prompt with transcript or description

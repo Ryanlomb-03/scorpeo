@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from "react";
 import { isSimpleGreeting, getLocalGreetingResponse } from "@/lib/localGreetings";
+import { loadPyodide } from "pyodide";
 
 export interface Message {
   id: string;
@@ -96,6 +97,27 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const guestUserId = useRef<string>("guest-user");
   const updateBufferRef = useRef<string>("");
   const animationFrameId = useRef<number | null>(null);
+  const pyodideRef = useRef<any>(null);
+  const [pyodideLoaded, setPyodideLoaded] = useState(false);
+
+  // Load Pyodide for client-side Python execution
+  useEffect(() => {
+    const loadPyodide = async () => {
+      try {
+        const pyodide = await loadPyodide({
+          indexURL: "https://cdn.jsdelivr.net/pyodide/v0.23.4/full/"
+        });
+        await pyodide.loadPackage("micropip");
+        await pyodide.installPackage("youtube-transcript-api");
+        pyodideRef.current = pyodide;
+        setPyodideLoaded(true);
+        console.log('[ChatContext] Pyodide loaded successfully');
+      } catch (error) {
+        console.error('[ChatContext] Pyodide failed to load:', error);
+      }
+    };
+    loadPyodide();
+  }, []);
   const thinkingBufferRef = useRef<string>("");
   const textBufferRef = useRef<string>("");
   const lastUpdateTimeRef = useRef<number>(0);
@@ -257,6 +279,50 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       console.error("Failed to generate AI title, keeping provisional title:", error);
       // Keep provisional title on failure - don't break the chat
     }
+  };
+
+  // Fetch YouTube transcript using Pyodide (client-side Python)
+  const fetchYouTubeTranscript = async (videoId: string): Promise<string | null> => {
+    if (!pyodideLoaded || !pyodideRef.current) {
+      console.log('[ChatContext] Pyodide not loaded, skipping transcript fetch');
+      return null;
+    }
+
+    try {
+      const pyodide = pyodideRef.current;
+      const transcriptCode = `
+from youtube_transcript_api import YouTubeTranscriptApi
+
+try:
+    api = YouTubeTranscriptApi()
+    transcript = api.fetch("${videoId}", languages=['en'])
+    transcript_text = ' '.join([snippet.text for snippet in transcript])
+    result = {"success": True, "transcript": transcript_text}
+except Exception as e:
+    result = {"success": False, "error": str(e)}
+result
+      `;
+
+      const result = await pyodide.runPythonAsync(transcriptCode);
+      
+      if (result.success && result.transcript) {
+        console.log('[ChatContext] Transcript fetched successfully, length:', result.transcript.length);
+        return result.transcript;
+      } else {
+        console.log('[ChatContext] Transcript fetch failed:', result.error);
+        return null;
+      }
+    } catch (error) {
+      console.error('[ChatContext] Transcript fetch error:', error);
+      return null;
+    }
+  };
+
+  // Extract YouTube video ID from text
+  const extractVideoId = (text: string): string | null => {
+    const youtubeRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+    const match = text.match(youtubeRegex);
+    return match ? match[1] : null;
   };
 
   const sendMessage = async (content: string, onChunk?: (chunk: string) => void) => {
@@ -453,7 +519,15 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         // Start background title generation with typewriter effect
         generateAndTypeTitle(convId, content);
       }
-      
+
+      // Check for YouTube URL and fetch transcript if Pyodide is loaded
+      let transcript = null;
+      const videoId = extractVideoId(content);
+      if (videoId && pyodideLoaded) {
+        console.log('[ChatContext] YouTube URL detected, fetching transcript...');
+        transcript = await fetchYouTubeTranscript(videoId);
+      }
+
       const chatRes = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -461,7 +535,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           messages: [
             ...messages.map(m => ({ role: m.role, content: m.content })),
             { role: "user", content }
-          ]
+          ],
+          transcript: transcript,
+          videoId: videoId
         })
       });
       

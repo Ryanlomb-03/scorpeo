@@ -191,25 +191,6 @@ INSTRUCTIONS:
       temperature,
       max_tokens: maxTokens,
       stream: true,
-    };
-
-    const SYSTEM_PROMPT: Message = {
-      role: "system",
-      content: NEWS_SYSTEM_PROMPT
-    };
-
-    const payloadMessages = [SYSTEM_PROMPT, ...messages.slice(-1)];
-    
-    const groqModel = 'qwen/qwen3.8-27b';
-    const temperature = 0.7;
-    const maxTokens = 4096;
-
-    const aiRequest = {
-      model: groqModel,
-      messages: payloadMessages,
-      temperature,
-      max_tokens: maxTokens,
-      stream: true,
       taskType: 'conversation' as any,
       capabilities: { chat: true, streaming: true } as any,
     };

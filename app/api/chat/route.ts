@@ -305,17 +305,18 @@ export async function POST(req: Request) {
     return await handleDictionaryChat(req, messages, lastUserMessage, wordToLookup, overallStart);
   }
 
-  // Detect news lookup queries - BEFORE YouTube to prioritize news
+  // Route to appropriate handler based on content type - YouTube BEFORE news
+  if (youtubeVideoId && youtubeVideoInfo) {
+    console.log('[Chat Route] Routing to YouTube handler');
+    return await handleYouTubeChat(req, messages, lastUserMessage, youtubeVideoInfo, overallStart, transcript);
+  }
+
+  // Detect news lookup queries
   const newsQuery = extractNewsQuery(lastUserMessage);
   console.log('[Chat Route] News query check:', { message: lastUserMessage, newsQuery });
   if (newsQuery) {
     console.log('[Chat Route] News lookup detected for query:', newsQuery);
     return await handleNewsChat(req, messages, lastUserMessage, newsQuery, overallStart);
-  }
-
-  // Route to appropriate handler based on content type
-  if (youtubeVideoId && youtubeVideoInfo) {
-    return await handleYouTubeChat(req, messages, lastUserMessage, youtubeVideoInfo, overallStart, transcript);
   }
   
   return await handleNormalChat(req, messages, lastUserMessage, overallStart);

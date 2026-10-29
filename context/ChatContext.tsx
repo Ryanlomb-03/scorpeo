@@ -21,6 +21,19 @@ export interface Message {
     description: string;
     extract: string;
   };
+  youtubeVideoData?: {
+    id: string;
+    title: string;
+    description: string;
+    channelTitle: string;
+    publishedAt: string;
+    thumbnail: string;
+    duration: string;
+    viewCount: number;
+    likeCount: number;
+    commentCount: number;
+    transcript?: string;
+  };
 }
 
 export interface Conversation {
@@ -433,10 +446,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     const BATCH_INTERVAL = 50; // Batch updates every 50ms for smooth rendering
 
     // Throttled update function using requestAnimationFrame with batching
-    const flushUpdate = (id: string, cardData: any, thinking: string, newsData?: any) => {
+    const flushUpdate = (id: string, cardData: any, youtubeData: any, thinking: string, newsData?: any) => {
       setMessages(prev =>
         prev.map(m =>
-          m.id === id ? { ...m, content: textBufferRef.current, wikiCardData: cardData, newsCardData: newsData, thinking } : m
+          m.id === id ? { ...m, content: textBufferRef.current, wikiCardData: cardData, youtubeVideoData: youtubeData, newsCardData: newsData, thinking } : m
         )
       );
     };
@@ -477,6 +490,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       let isFirstChunk = true;
       let buffer = "";
       let wikiCardData: any = null;
+      let youtubeVideoData: any = null;
       let thinkingContent = "";
 
       while (true) {
@@ -502,6 +516,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           }
         }
 
+        // Check for YouTube video markers
+        const youtubeVideoMatch = buffer.match(/\[YOUTUBE_VIDEO_START\]([\s\S]*?)\[YOUTUBE_VIDEO_END\]/);
+        if (youtubeVideoMatch && !youtubeVideoData) {
+          try {
+            const videoData = JSON.parse(youtubeVideoMatch[1]);
+            youtubeVideoData = videoData;
+            // Remove the YouTube video markers from the content
+            buffer = buffer.replace(youtubeVideoMatch[0], '');
+            assistantContent = buffer;
+          } catch (e) {
+            console.error("Failed to parse YouTube video data:", e);
+          }
+        }
+
         // Parse thinking markers [THINKING_START]...[THINKING_END]
         // Extract thinking content from the current chunk first
         const chunkThinkingMatch = chunk.match(/\[THINKING_START\]([\s\S]*?)\[THINKING_END\]/g);
@@ -521,6 +549,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         const wikiRegex = /\[WIKI_CARD_START\]([\s\S]*?)\[WIKI_CARD_END\]/g;
         buffer = buffer.replace(wikiRegex, '');
         
+        // Remove ALL YouTube video markers from visible content
+        const youtubeRegex = /\[YOUTUBE_VIDEO_START\]([\s\S]*?)\[YOUTUBE_VIDEO_END\]/g;
+        buffer = buffer.replace(youtubeRegex, '');
+        
         assistantContent = buffer;
         textBufferRef.current = assistantContent;
 
@@ -538,14 +570,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         if (isFirstChunk) {
           isFirstChunk = false;
           setMessages(prev => prev.map(m =>
-            m.id === assistantId ? { ...m, content: displayContent, isLoading: false, wikiCardData, thinking: thinkingBufferRef.current } : m
+            m.id === assistantId ? { ...m, content: displayContent, isLoading: false, wikiCardData, youtubeVideoData, thinking: thinkingBufferRef.current } : m
           ));
           lastUpdateTimeRef.current = now;
         } else if (timeSinceLastUpdate >= BATCH_INTERVAL) {
           // Batched update - only update if enough time has passed
           if (!animationFrameId.current) {
             animationFrameId.current = requestAnimationFrame(() => {
-              flushUpdate(assistantId, wikiCardData, thinkingBufferRef.current);
+              flushUpdate(assistantId, wikiCardData, youtubeVideoData, thinkingBufferRef.current);
               animationFrameId.current = null;
               lastUpdateTimeRef.current = Date.now();
             });
@@ -562,7 +594,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
       // Update message with final AI response and make sure loading is disabled
       setMessages(prev => prev.map(m => 
-        m.id === assistantId ? { ...m, content: assistantContent, isLoading: false, wikiCardData, thinking: thinkingBufferRef.current } : m
+        m.id === assistantId ? { ...m, content: assistantContent, isLoading: false, wikiCardData, youtubeVideoData, thinking: thinkingBufferRef.current } : m
       ));
       
       // Save messages to localStorage immediately
@@ -573,6 +605,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           role: "assistant",
           content: assistantContent,
           wikiCardData,
+          youtubeVideoData,
           thinking: thinkingBufferRef.current
         }];
         localStorage.setItem(`guestMessages_${convId}`, JSON.stringify(finalMessages));

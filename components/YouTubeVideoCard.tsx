@@ -13,20 +13,14 @@ interface YouTubeVideoData {
   viewCount: number;
   likeCount: number;
   commentCount: number;
-}
-
-interface TimestampedSummary {
-  points: string[];
-  timestamps: { [key: string]: number }; // Map of point index to timestamp in seconds
+  transcript?: string; // Full transcript with timestamps
 }
 
 interface YouTubeVideoCardProps {
   data: YouTubeVideoData;
-  summary?: TimestampedSummary;
-  showDescription?: boolean;
 }
 
-export default function YouTubeVideoCard({ data, summary, showDescription = false }: YouTubeVideoCardProps) {
+export default function YouTubeVideoCard({ data }: YouTubeVideoCardProps) {
   const formatNumber = (num: number): string => {
     if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
     if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
@@ -40,16 +34,106 @@ export default function YouTubeVideoCard({ data, summary, showDescription = fals
   };
 
   const jumpToTimestamp = (seconds: number) => {
-    // Update the iframe to seek to the timestamp
     const iframe = document.querySelector(`iframe[src*="${data.id}"]`) as HTMLIFrameElement;
     if (iframe) {
       iframe.src = `https://www.youtube.com/embed/${data.id}?start=${seconds}&autoplay=1`;
     }
   };
 
+  // Parse transcript for timestamps - extract only the timestamp section
+  const parseTranscript = (text: string) => {
+    const lines = text.split('\n');
+    const sections: { time: string; content: string }[] = [];
+    let inTimestampSection = false;
+    
+    lines.forEach(line => {
+      // Check if we're in the timestamp section
+      if (line.includes('📅 Timestamps') || line.includes('Timestamps:')) {
+        inTimestampSection = true;
+        return;
+      }
+      
+      // Stop if we've left the timestamp section (next section starts)
+      if (inTimestampSection && (line.startsWith('🤝') || line.startsWith('🔍') || line.startsWith('📌') || line.startsWith('⚠️'))) {
+        inTimestampSection = false;
+        return;
+      }
+      
+      if (inTimestampSection) {
+        // Match timestamps like [MM:SS] or MM:SS format
+        const timestampMatch = line.match(/\[(\d{1,2}:\d{2})\]|^(\d{1,2}:\d{2})\s*(–|-)/);
+        if (timestampMatch) {
+          const time = timestampMatch[1] || timestampMatch[2];
+          const content = line.replace(timestampMatch[0], '').replace(/^[–-]\s*/, '').trim();
+          if (content) {
+            sections.push({ time, content });
+          }
+        }
+      }
+    });
+    
+    return sections;
+  };
+
+  // Remove timestamp section from description for display
+  const removeTimestampSection = (text: string) => {
+    const lines = text.split('\n');
+    const filteredLines: string[] = [];
+    let inTimestampSection = false;
+    
+    lines.forEach(line => {
+      // Check if we're entering the timestamp section
+      if (line.includes('📅 Timestamps') || line.includes('Timestamps:')) {
+        inTimestampSection = true;
+        return;
+      }
+      
+      // Stop if we've left the timestamp section
+      if (inTimestampSection && (line.startsWith('🤝') || line.startsWith('🔍') || line.startsWith('📌') || line.startsWith('⚠️'))) {
+        inTimestampSection = false;
+        filteredLines.push(line);
+        return;
+      }
+      
+      // Skip lines while in timestamp section
+      if (!inTimestampSection) {
+        filteredLines.push(line);
+      }
+    });
+    
+    return filteredLines.join('\n');
+  };
+
+  // Extract only the timestamp section from description
+  const transcriptSections = parseTranscript(data.description || '');
+  // Remove timestamp section from description for display
+  const descriptionWithoutTimestamps = removeTimestampSection(data.description || '');
+
   return (
     <div className="bg-neutral-800 rounded-xl overflow-hidden my-4">
-      {/* YouTube Embed Player - at the top */}
+      {/* Title, channel, and date at the TOP */}
+      <div className="bg-neutral-900 p-5 border-b border-neutral-700">
+        <h3 className="text-white font-semibold text-lg leading-tight mb-2">
+          {data.title}
+        </h3>
+        <div className="flex items-center gap-3 text-gray-400 text-sm">
+          <span className="font-medium text-white">{data.channelTitle}</span>
+          <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" className="w-4 h-4">
+            <path d="M0 0h24v24H0z" fill="none" />
+            <g fill="none">
+              <rect width="17.98" height="5.25" x="3.01" y="3.46" fill="currentColor" opacity=".2" rx="1" />
+              <rect width="17.98" height="17.98" x="3.01" y="3.46" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" rx="3" />
+              <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M7.69 1.76v3.4m8.68-3.4v3.4m4.2 3.54H3.83" />
+              <path fill="currentColor" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M7.63 12.76a.5.5 0 1 1-1 0a.5.5 0 0 1 1 0m0 4.24a.5.5 0 1 1-1 0a.5.5 0 0 1 1 0m4.87-4.24a.5.5 0 1 1-1 0a.5.5 0 0 1 1 0m0 4.24a.5.5 0 1 1-1 0a.5.5 0 0 1 1 0m4.88-4.24a.5.5 0 1 1-1 0a.5.5 0 0 1 1 0" />
+            </g>
+          </svg>
+          <span>
+            {new Date(data.publishedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+          </span>
+        </div>
+      </div>
+
+      {/* YouTube Embed Player - BELOW title/separator */}
       <div className="relative w-full pt-[56.25%] bg-black">
         <iframe
           src={`https://www.youtube.com/embed/${data.id}`}
@@ -60,8 +144,8 @@ export default function YouTubeVideoCard({ data, summary, showDescription = fals
         />
       </div>
       
-      {/* Stats below video */}
-      <div className="bg-neutral-900 p-5 pt-3 flex items-center gap-6 text-gray-400 text-sm">
+      {/* Stats directly under video */}
+      <div className="bg-neutral-900 p-4 flex items-center gap-6 text-gray-400 text-sm border-b border-neutral-700">
         <div className="flex items-center gap-1.5">
           <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 512 512" className="w-4 h-4">
             <path d="M0 0h512v512H0z" fill="none" />
@@ -85,48 +169,51 @@ export default function YouTubeVideoCard({ data, summary, showDescription = fals
           <span>{formatNumber(data.commentCount)} comments</span>
         </div>
       </div>
-
-      {/* Key Points or Description */}
-      {showDescription ? (
-        data.description && (
-          <div className="bg-neutral-900 px-5 pt-4 pb-3">
-            <h4 className="text-white font-medium mb-3">Description</h4>
-            <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-wrap">
-              {data.description}
-            </p>
+      
+      {/* Transcript/Content below stats */}
+      {transcriptSections.length > 0 && (
+        <div className="bg-neutral-900 p-5 border-b border-neutral-700">
+          <h4 className="text-white font-medium mb-4 flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" className="w-4 h-4">
+              <path d="M0 0h24v24H0z" fill="none" />
+              <path fill="currentColor" fillRule="evenodd" d="M.25 9A6.75 6.75 0 0 1 7 2.25h10A6.75 6.75 0 0 1 23.75 9v6A6.75 6.75 0 0 1 17 21.75H7A6.75 6.75 0 0 1 .25 15zm4.5 2.828a3.578 3.578 0 0 1 6.109-2.53l.171.172a.75.75 0 0 1-1.06 1.06l-.172-.171a2.078 2.078 0 0 0-3.548 1.47v.343a2.078 2.078 0 0 0 3.548 1.47l.172-.172a.75.75 0 1 1 1.06 1.06l-.171.172a3.578 3.578 0 0 1-6.109-2.53zM16.328 8.25a3.58 3.58 0 0 0-3.578 3.578v.344a3.578 3.578 0 0 0 6.109 2.53l.171-.172a.75.75 0 1 0-1.06-1.06l-.172.171a2.079 2.079 0 0 1-3.548-1.47v-.343a2.078 2.078 0 0 1 3.548-1.47l.172.172a.75.75 0 0 0 1.06-1.06l-.171-.172a3.58 3.58 0 0 0-2.53-1.048" clipRule="evenodd" />
+            </svg>
+            Captions
+          </h4>
+          <div className="space-y-3">
+            {transcriptSections.map((section, index) => (
+              <div key={index} className="text-gray-300 text-sm leading-relaxed">
+                {section.time && (
+                  <button
+                    onClick={() => {
+                      const [mins, secs] = section.time.split(':').map(Number);
+                      const seconds = mins * 60 + secs;
+                      jumpToTimestamp(seconds);
+                    }}
+                    className="text-white mr-2 cursor-pointer font-mono"
+                    title={`Jump to ${section.time}`}
+                  >
+                    <span>[</span>
+                    <span className="underline decoration-dotted underline-offset-2">{section.time}</span>
+                    <span>]</span>
+                  </button>
+                )}
+                <span>{section.content}</span>
+              </div>
+            ))}
           </div>
-        )
-      ) : (
-        summary && summary.points.length > 0 && (
-          <div className="bg-neutral-900 px-5 pt-4 pb-3">
-            <h4 className="text-white font-medium mb-3">Key Points</h4>
-            <ul className="space-y-2">
-              {summary.points.map((point, index) => {
-                const timestamp = summary.timestamps[index];
-                const cleanPoint = point.replace(/\*\*/g, '').replace(/\*/g, '');
-                return (
-                  <li key={index} className="text-gray-300 text-sm leading-relaxed">
-                    {timestamp !== undefined && (
-                      <button
-                        onClick={() => jumpToTimestamp(timestamp)}
-                        className="text-gray-300 hover:text-gray-200 mr-2 cursor-pointer"
-                        title={`Jump to ${formatTimestamp(timestamp)}`}
-                      >
-                        <span>[</span>
-                        <span className="underline decoration-dotted underline-offset-2">{formatTimestamp(timestamp)}</span>
-                        <span>]</span>
-                      </button>
-                    )}
-                    <span className="font-semibold" dangerouslySetInnerHTML={{ __html: cleanPoint }} />
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )
+        </div>
       )}
       
-
+      {/* Description under transcript */}
+      {descriptionWithoutTimestamps && (
+        <div className="bg-neutral-900 p-5">
+          <h4 className="text-white font-medium mb-2">Description</h4>
+          <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-wrap">
+            {descriptionWithoutTimestamps}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

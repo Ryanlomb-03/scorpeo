@@ -629,88 +629,44 @@ const EQUATION_SYMBOLS: Record<string, string> = {
   "\\nu": "Nu - Index notation (spacetime indices)",
 };
 
-export default function MessageBubble({ role, content, thinking, onEdit, isLoading, loadingPhase, messageId, userId, conversationId, onRetry, onVersionChange, wikiCardData }: { role: string; content: string; thinking?: string; onEdit?: (newContent: string) => void; isLoading?: boolean; loadingPhase?: number; messageId?: string; userId?: string; conversationId?: string; onRetry?: (messageId: string) => void; onVersionChange?: (messageId: string, version: number, content: string) => void; wikiCardData?: WikiCardData }) {
+export default function MessageBubble({ role, content, thinking, onEdit, isLoading, loadingPhase, messageId, userId, conversationId, onRetry, onVersionChange, wikiCardData, youtubeVideoData }: { role: string; content: string; thinking?: string; onEdit?: (newContent: string) => void; isLoading?: boolean; loadingPhase?: number; messageId?: string; userId?: string; conversationId?: string; onRetry?: (messageId: string) => void; onVersionChange?: (messageId: string, version: number, content: string) => void; wikiCardData?: WikiCardData; youtubeVideoData?: any }) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(content);
   const [showTOC, setShowTOC] = useState(false);
-  const [youtubeVideoData, setYoutubeVideoData] = useState<any>(null);
-  const [showDescription, setShowDescription] = useState(false);
-  const [timestampedSummary, setTimestampedSummary] = useState<any>(null);
+  const [localYoutubeVideoData, setLocalYoutubeVideoData] = useState<any>(null);
   const [processedContent, setProcessedContent] = useState<string>(content);
 
-  // Helper function to format YouTube date
-  const formatYouTubeDate = (dateString: string): string => {
-    const date = new Date(dateString);
-    const day = date.getDate();
-    const month = date.toLocaleDateString('en-US', { month: 'long' });
-    const year = date.getFullYear();
-    const suffix = day % 10 === 1 && day % 100 !== 11 ? 'st' : day % 10 === 2 && day % 100 !== 12 ? 'nd' : day % 10 === 3 && day % 100 !== 13 ? 'rd' : 'th';
-    return `${month} ${day}${suffix} ${year}`;
-  };
-
-  // Detect YouTube URL and fetch video info
+  // Detect YouTube URL in content and fetch video info if not already provided
   useEffect(() => {
-    const videoId = extractVideoId(content);
-    if (videoId) {
-      getVideoInfo(videoId).then(data => {
-        if (data) {
-          setYoutubeVideoData({
-            ...data,
-            duration: formatDuration(data.duration)
-          });
-        }
-      });
-    }
-  }, [content]);
-
-  // Parse timestamps from assistant response for YouTube videos
-  useEffect(() => {
-    if (role === 'assistant' && youtubeVideoData) {
-      // Parse timestamps in format [MM:SS] or [HH:MM:SS] or [MM:SS - MM:SS]
-      const timestampRegex = /\[(\d{1,2}):(\d{2})(?:\s*-\s*\d{1,2}:\d{2})?\]/g;
-      const points: string[] = [];
-      const timestamps: { [key: string]: number } = {};
-      
-      const lines = content.split('\n');
-      
-      lines.forEach((line, index) => {
-        const timestampsInLine: number[] = [];
-        let match;
-        
-        while ((match = timestampRegex.exec(line)) !== null) {
-          const mins = parseInt(match[1]);
-          const secs = parseInt(match[2]);
-          const totalSeconds = mins * 60 + secs;
-          timestampsInLine.push(totalSeconds);
-        }
-        
-        if (timestampsInLine.length > 0) {
-          // Remove timestamps from the line text
-          const cleanLine = line.replace(timestampRegex, '').trim();
-          if (cleanLine) {
-            points.push(cleanLine);
-            timestamps[points.length - 1] = timestampsInLine[0]; // Use first timestamp
+    if (!youtubeVideoData) {
+      const videoId = extractVideoId(content);
+      if (videoId) {
+        getVideoInfo(videoId).then(data => {
+          if (data) {
+            setLocalYoutubeVideoData({
+              ...data,
+              duration: formatDuration(data.duration)
+            });
           }
-        }
-      });
-      
-      if (points.length > 0) {
-        setTimestampedSummary({ points, timestamps });
+        });
       }
     }
-  }, [content, role, youtubeVideoData]);
+  }, [content, youtubeVideoData]);
+
+  // Use either backend-provided data or locally fetched data
+  const finalYoutubeData = youtubeVideoData || localYoutubeVideoData;
 
   // Replace YouTube URLs in content with placeholder
   useEffect(() => {
-    if (youtubeVideoData) {
-      const urlRegex = /https?:\/\/(?:www\.)?youtube\.com\/watch\?v=[\w-]+/g;
+    if (finalYoutubeData) {
+      const urlRegex = /https?:\/\/(?:www\.)?(youtube\.com\/watch\?v=[\w-]+|youtu\.be\/[\w-]+)/g;
       setProcessedContent(content.replace(urlRegex, ''));
     } else {
       setProcessedContent(content);
     }
-  }, [content, youtubeVideoData]);
+  }, [content, finalYoutubeData]);
   const [liked, setLiked] = useState(false);
   const [disliked, setDisliked] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
@@ -1035,9 +991,9 @@ export default function MessageBubble({ role, content, thinking, onEdit, isLoadi
                 <button
                   key={index}
                   onClick={() => {
-                    const iframe = document.querySelector(`iframe[src*="${youtubeVideoData.id}"]`) as HTMLIFrameElement;
+                    const iframe = document.querySelector(`iframe[src*="${finalYoutubeData.id}"]`) as HTMLIFrameElement;
                     if (iframe) {
-                      iframe.src = `https://www.youtube.com/embed/${youtubeVideoData.id}?start=${seconds}&autoplay=1`;
+                      iframe.src = `https://www.youtube.com/embed/${finalYoutubeData.id}?start=${seconds}&autoplay=1`;
                     }
                   }}
                   className="text-gray-300 hover:text-gray-200 cursor-pointer"
@@ -1877,49 +1833,8 @@ export default function MessageBubble({ role, content, thinking, onEdit, isLoadi
         </div>
 
         {/* YouTube video card if available */}
-        {youtubeVideoData && (
-          <>
-            {/* Title, channel, and date above the card */}
-            <div className="mb-3">
-              <h3 className="text-white font-semibold text-lg leading-tight mb-2">
-                {youtubeVideoData.title}
-              </h3>
-              <div className="flex items-center gap-3 text-gray-400 text-sm">
-                <span className="font-medium text-white">{youtubeVideoData.channelTitle}</span>
-                <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" className="w-4 h-4">
-                  <path d="M0 0h24v24H0z" fill="none" />
-                  <g fill="none">
-                    <rect width="17.98" height="5.25" x="3.01" y="3.46" fill="currentColor" opacity=".2" rx="1" />
-                    <rect width="17.98" height="17.98" x="3.01" y="3.46" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" rx="3" />
-                    <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M7.69 1.76v3.4m8.68-3.4v3.4m4.2 3.54H3.83" />
-                    <path fill="currentColor" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M7.63 12.76a.5.5 0 1 1-1 0a.5.5 0 0 1 1 0m0 4.24a.5.5 0 1 1-1 0a.5.5 0 0 1 1 0m4.87-4.24a.5.5 0 1 1-1 0a.5.5 0 0 1 1 0m0 4.24a.5.5 0 1 1-1 0a.5.5 0 0 1 1 0m4.88-4.24a.5.5 0 1 1-1 0a.5.5 0 0 1 1 0" />
-                  </g>
-                </svg>
-                <span>
-                  {formatYouTubeDate(youtubeVideoData.publishedAt)}
-                </span>
-              </div>
-            </div>
-            <YouTubeVideoCard data={youtubeVideoData} summary={timestampedSummary} showDescription={showDescription} />
-            {/* Toggle button outside card, bottom right */}
-            {youtubeVideoData.description && (
-              <div className="flex justify-end mt-2">
-                <button
-                  onClick={() => setShowDescription(!showDescription)}
-                  className="flex items-center gap-2 text-gray-400 text-sm hover:text-white transition-colors bg-neutral-800 rounded-full px-4 py-2"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" className="w-4 h-4">
-                    <path d="M0 0h24v24H0z" fill="none" />
-                    <g fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5">
-                      <path d="M15.5 5v6.34c0 3.77 0 5.66-1.17 6.83s-3.05 1.17-6.82 1.17H5" />
-                      <path d="m19.77 7.96l-1.43-1.44c-1.34-1.34-2-2-2.83-2s-1.5.66-2.83 2l-1.44 1.44" />
-                    </g>
-                  </svg>
-                  <span>{showDescription ? 'Key Points' : 'Description'}</span>
-                </button>
-              </div>
-            )}
-          </>
+        {finalYoutubeData && (
+          <YouTubeVideoCard data={finalYoutubeData} />
         )}
 
         {/* Wiki card if available */}

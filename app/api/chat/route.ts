@@ -431,46 +431,48 @@ INSTRUCTIONS:
 }
 
 async function handleYouTubeChat(req: Request, messages: any[], lastUserMessage: string, youtubeVideoInfo: any, overallStart: number, transcript?: string) {
-  // Try to fetch transcript using Python service with Webshare proxies
+  // Try to fetch transcript using YouTube Transcript API first
   let videoTranscript: string = transcript || '';
   
-  if (!videoTranscript && youtubeVideoInfo.id) {
+  if (!videoTranscript && process.env.YOUTUBE_TRANSCRIPT_API_KEY) {
     try {
-      console.log('[Chat Route] Fetching transcript from Python service with proxy');
-      const pythonServiceUrl = `${process.env.VERCEL_URL || 'http://localhost:3000'}/api/transcript-python/index.py?video_id=${youtubeVideoInfo.id}`;
-      const response = await fetch(pythonServiceUrl);
-      
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.transcript) {
-          // Convert transcript array to text
-          videoTranscript = data.transcript
-            .map((item: any) => item.text)
-            .join(' ');
-          console.log('[Chat Route] Transcript fetched from Python service, length:', videoTranscript.length);
+      console.log('[Chat Route] Fetching transcript from YouTube Transcript API');
+      const response = await fetch(
+        `https://youtube-transcript.ai/transcript/${youtubeVideoInfo.id}.txt`,
+        {
+          headers: {
+            'Authorization': `Bearer ${process.env.YOUTUBE_TRANSCRIPT_API_KEY}`
+          }
         }
+      );
+      
+      if (response.status === 401) {
+        console.log('[Chat Route] YouTube Transcript API key not recognized');
+      } else if (response.status === 429) {
+        console.log('[Chat Route] YouTube Transcript API daily quota used up');
+      } else if (response.ok) {
+        videoTranscript = await response.text();
+        console.log('[Chat Route] Transcript fetched from YouTube Transcript API, length:', videoTranscript.length);
       } else {
-        console.log('[Chat Route] Python service failed, trying YouTube Data API');
+        console.log('[Chat Route] YouTube Transcript API error:', response.status);
       }
     } catch (error) {
-      console.log('[Chat Route] Python service error:', error);
+      console.log('[Chat Route] YouTube Transcript API fetch failed:', error);
     }
   }
-  
-  // Fallback to YouTube Data API if Python service fails
+
+  // Fallback to YouTube Data API if transcript not available
   if (!videoTranscript && process.env.YOUTUBE_API_KEY) {
     try {
-      console.log('[Chat Route] Fetching transcript from YouTube Data API');
+      console.log('[Chat Route] Fetching transcript from YouTube Data API (fallback)');
       const response = await fetch(`https://www.googleapis.com/youtube/v3/captions?part=snippet&videoId=${youtubeVideoInfo.id}&key=${process.env.YOUTUBE_API_KEY}`);
       if (response.ok) {
         const data = await response.json();
         if (data.items && data.items.length > 0) {
-          // For caption track, we need to download the actual caption content
           const captionId = data.items[0].id;
           const captionResponse = await fetch(`https://www.googleapis.com/youtube/v3/captions/${captionId}?key=${process.env.YOUTUBE_API_KEY}`);
           if (captionResponse.ok) {
             const captionData = await captionResponse.json();
-            // Decode caption content if available
             if (captionData.snippet?.simple) {
               videoTranscript = captionData.snippet.simple;
               console.log('[Chat Route] Transcript fetched from YouTube Data API, length:', videoTranscript.length);
@@ -501,6 +503,7 @@ Channel: ${youtubeVideoInfo.channelTitle}
 Duration: ${formatDuration(youtubeVideoInfo.duration)}
 Views: ${youtubeVideoInfo.viewCount.toLocaleString()}
 Published: ${new Date(youtubeVideoInfo.publishedAt).toLocaleDateString()}
+Original URL: ${lastUserMessage}
 
 VIDEO CONTENT:
 ${videoTranscript}
@@ -508,12 +511,10 @@ ${videoTranscript}
 INSTRUCTIONS:
 - The video player is visible to the user so they can watch it along with your response
 - DO NOT say you can't access the video or that you don't know what's in it
-- Use the content above to provide detailed insights about the video's content
-- If the user asks "what is he saying?" or "what's the video about?", provide a comprehensive summary
-- Extract and list key points, main arguments, and important details
+- Provide a comprehensive response to the user's question using the full content
 - When discussing specific topics or key points, include timestamps in the format [MM:SS] (single timestamp, not ranges)
-- Format your response as bullet points when listing multiple topics
-- DO NOT include the YouTube URL in your response - the embedded player is already visible
+- IMPORTANT: At the end of your response, ALWAYS include a "Key Points" section with bullet points summarizing the main topics covered in the video
+- Include the original YouTube URL at the very end after the key points
 - Be conversational and helpful`;
 
   const SYSTEM_PROMPT: Message = {
@@ -550,9 +551,24 @@ INSTRUCTIONS:
       signal: abortController.signal,
     };
 
-    console.log('[Chat Route] YouTube chat request config:', { model: groqModel, maxTokens, hasTranscript: !!transcript });
+    console.log('[Chat Route] YouTube chat request config:', { model: groqModel, maxTokens, hasTranscript: !!videoTranscript });
 
-    return streamFromGroq(groqProvider, aiRequest, abortController, overallStart);
+    // Inject video metadata for frontend to display
+    const videoMetadata = JSON.stringify({
+      id: youtubeVideoInfo.id,
+      title: youtubeVideoInfo.title,
+      description: youtubeVideoInfo.description,
+      channelTitle: youtubeVideoInfo.channelTitle,
+      publishedAt: youtubeVideoInfo.publishedAt,
+      thumbnail: youtubeVideoInfo.thumbnail,
+      duration: youtubeVideoInfo.duration,
+      viewCount: youtubeVideoInfo.viewCount,
+      likeCount: youtubeVideoInfo.likeCount,
+      commentCount: youtubeVideoInfo.commentCount,
+      transcript: videoTranscript
+    });
+
+    return streamFromGroq(groqProvider, aiRequest, abortController, overallStart, null, videoMetadata);
   } catch (error) {
     console.error('[Chat Route] YouTube chat error:', error);
     return new Response(JSON.stringify({ error: 'Failed to process request' }), { status: 500 });
@@ -809,7 +825,7 @@ ${artifactInstructions}${wikiContext}${modeInstruction}`;
   }
 }
 
-async function streamFromGroq(groqProvider: any, aiRequest: any, abortController: AbortController, overallStart: number) {
+async function streamFromGroq(groqProvider: any, aiRequest: any, abortController: AbortController, overallStart: number, wikiCardData?: any, youtubeVideoData?: string) {
   const encoder = new TextEncoder();
   let streamClosed = false;
 
@@ -821,6 +837,19 @@ async function streamFromGroq(groqProvider: any, aiRequest: any, abortController
         abortController.abort();
         originalClose();
       };
+
+      if (wikiCardData) {
+        const wikiPayload = JSON.stringify({ type: 'wiki_card', data: wikiCardData });
+        if (!streamClosed) {
+          controller.enqueue(encoder.encode(`[WIKI_CARD_START]${wikiPayload}[WIKI_CARD_END]`));
+        }
+      }
+
+      if (youtubeVideoData) {
+        if (!streamClosed) {
+          controller.enqueue(encoder.encode(`[YOUTUBE_VIDEO_START]${youtubeVideoData}[YOUTUBE_VIDEO_END]`));
+        }
+      }
 
       try {
         for await (const chunk of groqProvider.stream(aiRequest)) {

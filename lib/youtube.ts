@@ -4,6 +4,7 @@
  */
 
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || process.env.NEXT_PUBLIC_YOUTUBE_API_KEY || '';
+const YOUTUBE_TRANSCRIPT_API_KEY = process.env.YOUTUBE_TRANSCRIPT_API_KEY || '';
 
 export interface YouTubeVideoInfo {
   id: string;
@@ -103,17 +104,60 @@ export async function getVideoInfo(videoId: string): Promise<YouTubeVideoInfo | 
 }
 
 /**
- * Fetch transcript/captions for a video
- * Note: YouTube Data API v3 requires OAuth for caption download, so we use description as fallback
+ * Fetch transcript using YouTube Transcript API
+ * Returns transcript as Markdown with timestamps
  */
 export async function getVideoTranscript(videoId: string): Promise<string | null> {
+  if (!YOUTUBE_TRANSCRIPT_API_KEY) {
+    console.error('YouTube Transcript API key not configured');
+    return null;
+  }
+
+  try {
+    const response = await fetch(
+      `https://youtube-transcript.ai/transcript/${videoId}.txt`,
+      {
+        headers: {
+          'Authorization': `Bearer ${YOUTUBE_TRANSCRIPT_API_KEY}`
+        }
+      }
+    );
+
+    if (response.status === 401) {
+      console.error('[YouTube Transcript API] Key not recognized');
+      return null;
+    }
+
+    if (response.status === 429) {
+      console.error('[YouTube Transcript API] Daily quota used up');
+      return null;
+    }
+
+    if (!response.ok) {
+      console.error('[YouTube Transcript API] Error:', response.status, response.statusText);
+      return null;
+    }
+
+    const transcript = await response.text();
+    console.log('[YouTube Transcript API] Successfully fetched transcript, length:', transcript.length);
+    return transcript;
+  } catch (error) {
+    console.error('[YouTube Transcript API] Error fetching transcript:', error);
+    return null;
+  }
+}
+
+/**
+ * Fallback: Fetch transcript/captions for a video via YouTube Data API
+ * Note: YouTube Data API v3 requires OAuth for caption download
+ */
+export async function getVideoTranscriptFallback(videoId: string): Promise<string | null> {
   if (!YOUTUBE_API_KEY) {
     console.error('YouTube API key not configured');
     return null;
   }
 
   try {
-    // Try to get caption tracks first
     const response = await fetch(
       `https://www.googleapis.com/youtube/v3/captions?part=snippet&videoId=${videoId}&key=${YOUTUBE_API_KEY}`
     );
@@ -130,7 +174,6 @@ export async function getVideoTranscript(videoId: string): Promise<string | null
       return null;
     }
 
-    // Find English captions or auto-generated captions
     const caption = data.items.find((item: any) => 
       item.snippet.language === 'en' || item.snippet.language === 'en-US' || item.snippet.trackKind === 'asr'
     );
@@ -141,9 +184,6 @@ export async function getVideoTranscript(videoId: string): Promise<string | null
     }
 
     console.log('[YouTube] Found caption track:', caption.id, caption.snippet.language);
-
-    // Note: Caption download requires OAuth, which we don't have
-    // Returning null to fall back to description
     console.log('[YouTube] Caption download requires OAuth, using description instead');
     return null;
   } catch (error) {

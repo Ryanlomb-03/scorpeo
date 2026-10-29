@@ -38,18 +38,41 @@ function extractWordForDictionary(message: string): string | null {
 function extractNewsQuery(message: string): string | null {
   const lower = message.toLowerCase();
   
-  // Very aggressive check - if ANY of these keywords are present, treat as news
-  const newsKeywords = ['news', 'stories', 'headlines', 'latest', 'recent', 'today', 'technology', 'tech', 'ai', 'recent stories'];
+  // Skip casual greetings that contain "today"
+  const casualGreetings = [
+    /^(how are you|hru|how r u|how's it going|what's up|wassup|hey|hi|hello)\s+(doing|doin|u|you)?\s*today\b/i,
+    /^(good morning|good afternoon|good evening)\s*today\b/i,
+    /^(have a|hope you have)\s+(good|great|nice)\s+day\s*today\b/i,
+  ];
   
-  for (const keyword of newsKeywords) {
-    if (lower.includes(keyword)) {
-      // Extract topic after the keyword
-      const index = lower.indexOf(keyword);
-      const afterKeyword = message.substring(index + keyword.length).trim();
-      // Remove filler words
-      const topic = afterKeyword.replace(/^(about|on|in|for|the|a|an)\s+/i, '').trim();
-      return topic || 'general';
+  for (const pattern of casualGreetings) {
+    if (pattern.test(message)) {
+      return null; // Skip casual greetings
     }
+  }
+  
+  // Only trigger news if it has explicit news-related keywords before or after "today"
+  const newsContexts = [
+    /news\s+(about|on|in)?\s*today/i,
+    /today'?s?\s*(news|headlines|stories|latest|breaking)/i,
+    /what'?s\s+news\s+today/i,
+    /latest\s+news/i,
+    /breaking\s+news/i,
+    /recent\s+news/i,
+    /current\s+news/i,
+  ];
+  
+  for (const pattern of newsContexts) {
+    if (pattern.test(message)) {
+      return 'general';
+    }
+  }
+  
+  // Check for topic-specific news queries
+  const topicNewsPattern = /(?:news|latest|recent|breaking)\s+(?:about|on|in)?\s*(.+)/i;
+  const match = message.match(topicNewsPattern);
+  if (match && match[1] && match[1].trim().length > 2) {
+    return match[1].trim();
   }
   
   return null;
@@ -408,9 +431,33 @@ INSTRUCTIONS:
 }
 
 async function handleYouTubeChat(req: Request, messages: any[], lastUserMessage: string, youtubeVideoInfo: any, overallStart: number, transcript?: string) {
-  // Try to fetch transcript using YouTube Data API
+  // Try to fetch transcript using Python service with Webshare proxies
   let videoTranscript: string = transcript || '';
   
+  if (!videoTranscript && youtubeVideoInfo.id) {
+    try {
+      console.log('[Chat Route] Fetching transcript from Python service with proxy');
+      const pythonServiceUrl = `${process.env.VERCEL_URL || 'http://localhost:3000'}/api/transcript-python/index.py?video_id=${youtubeVideoInfo.id}`;
+      const response = await fetch(pythonServiceUrl);
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.transcript) {
+          // Convert transcript array to text
+          videoTranscript = data.transcript
+            .map((item: any) => item.text)
+            .join(' ');
+          console.log('[Chat Route] Transcript fetched from Python service, length:', videoTranscript.length);
+        }
+      } else {
+        console.log('[Chat Route] Python service failed, trying YouTube Data API');
+      }
+    } catch (error) {
+      console.log('[Chat Route] Python service error:', error);
+    }
+  }
+  
+  // Fallback to YouTube Data API if Python service fails
   if (!videoTranscript && process.env.YOUTUBE_API_KEY) {
     try {
       console.log('[Chat Route] Fetching transcript from YouTube Data API');

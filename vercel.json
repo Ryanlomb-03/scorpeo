@@ -1,7 +1,7 @@
 {
   "functions": {
     "api/transcript-python/index.py": {
-      "runtime": "python3.9"
+      "runtime": "python3.9@0.0.1"
     }
   }
 }
